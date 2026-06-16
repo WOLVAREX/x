@@ -309,8 +309,7 @@ router.get("/deployments/:id/logs", requireAuth, async (req, res): Promise<void>
 });
 
 router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
-  if (user.suspended) { res.status(403).json({ error: "Your account has been suspended. Contact support." }); return; }
+  const suspendedCheck = (req as any).user; if (suspendedCheck.suspended) { res.status(403).json({ error: "Your account has been suspended. Contact support." }); return; }
   const user = (req as any).user;
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -369,8 +368,7 @@ router.post("/deployments/:id/stop", requireAuth, async (req, res): Promise<void
 });
 
 router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<void> => {
-  const userCheck = (req as any).user;
-  if (userCheck.suspended) { res.status(403).json({ error: "Your account has been suspended. Contact support." }); return; }
+  const restartUserCheck = (req as any).user; if (restartUserCheck.suspended) { res.status(403).json({ error: "Your account has been suspended. Contact support." }); return; }
   const user = (req as any).user;
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -534,6 +532,7 @@ router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promis
   }
 });
 export default router;
+
 
 
 
