@@ -21,6 +21,9 @@ import WalletPage from "@/pages/wallet";
 import DevelopersPage from "@/pages/developers";
 import AdminDevelopers from "@/pages/admin-developers";
 import MyBotsPage from "@/pages/my-bots";
+import DocsPage from "@/pages/docs";
+import PrivacyPage from "@/pages/privacy";
+import TermsPage from "@/pages/terms";
 
 setBaseUrl("http://localhost:8080");
 
@@ -29,11 +32,17 @@ const queryClient = new QueryClient();
 function Router() {
   return (
     <Switch>
+      {/* Public */}
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/oauth-callback" component={OAuthCallback} />
       <Route path="/developers" component={DevelopersPage} />
+      <Route path="/docs" component={DocsPage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
+
+      {/* Protected user routes */}
       <Route path="/dashboard">
         <ProtectedRoute><Dashboard /></ProtectedRoute>
       </Route>
@@ -52,6 +61,8 @@ function Router() {
       <Route path="/wallet">
         <ProtectedRoute><WalletPage /></ProtectedRoute>
       </Route>
+
+      {/* Admin only */}
       <Route path="/admin">
         <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
       </Route>
@@ -61,6 +72,7 @@ function Router() {
       <Route path="/admin/developers">
         <ProtectedRoute adminOnly><AdminDevelopers /></ProtectedRoute>
       </Route>
+
       <Route component={NotFound} />
     </Switch>
   );
