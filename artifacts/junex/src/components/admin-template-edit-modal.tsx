@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, DollarSign, Gift, Globe } from "lucide-react";
 
-const API_BASE = "http://localhost:8080";
+const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 const CURRENCIES = ["KES", "USD", "NGN", "GHS", "UGX", "TZS", "ZAR"];
 
 interface Template {

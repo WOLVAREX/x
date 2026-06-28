@@ -16,7 +16,7 @@ import {
   ArrowUpRight, ArrowDownLeft, Shield,
 } from "lucide-react";
 
-const API_BASE = "http://localhost:8080";
+const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 
 interface WalletData {
   balance: number;

@@ -34,7 +34,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { AdminTemplateEditModal } from "@/components/admin-template-edit-modal";
 
-const API_BASE = "http://localhost:8080";
+const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 function authHeader() {
   const token = localStorage.getItem("junex_token");
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };

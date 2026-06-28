@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const API_BASE = "http://localhost:8080";
+const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 
 function fmt(amount: number, currency = "KES") {
   return `${currency} ${(amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;

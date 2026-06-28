@@ -9,7 +9,7 @@ import {
   Shield, ArrowRight, Gift, ChevronLeft,
 } from "lucide-react";
 
-const API_BASE = "http://localhost:8080";
+const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 
 type PaymentMethod = "card" | "mpesa";
 type Step = "method" | "mpesa-phone" | "mpesa-pending" | "done";
