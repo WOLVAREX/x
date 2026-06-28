@@ -90,7 +90,7 @@ export default function Register() {
                     <FormItem>
                       <FormLabel>Username</FormLabel>
                       <FormControl>
-                        <Input placeholder="johndoe" autoComplete="username" {...field} />
+                        <Input placeholder="supreme" autoComplete="username" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
