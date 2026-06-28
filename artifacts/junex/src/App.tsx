@@ -18,14 +18,12 @@ import AdminDashboard from "@/pages/admin-dashboard";
 import AdminTemplateNew from "@/pages/admin-template-new";
 import OAuthCallback from "@/pages/oauth-callback";
 import WalletPage from "@/pages/wallet";
-import DevelopersPage from "@/pages/developers";
-import AdminDevelopers from "@/pages/admin-developers";
 import MyBotsPage from "@/pages/my-bots";
 import DocsPage from "@/pages/docs";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 
-setBaseUrl("http://localhost:8080");
+if (import.meta.env.DEV) { setBaseUrl("http://localhost:8080"); }
 
 const queryClient = new QueryClient();
 
@@ -37,7 +35,6 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/oauth-callback" component={OAuthCallback} />
-      <Route path="/developers" component={DevelopersPage} />
       <Route path="/docs" component={DocsPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
@@ -68,9 +65,6 @@ function Router() {
       </Route>
       <Route path="/admin/templates/new">
         <ProtectedRoute adminOnly><AdminTemplateNew /></ProtectedRoute>
-      </Route>
-      <Route path="/admin/developers">
-        <ProtectedRoute adminOnly><AdminDevelopers /></ProtectedRoute>
       </Route>
 
       <Route component={NotFound} />
