@@ -636,11 +636,13 @@ components:
 
     Template:
       type: object
-      required: [id, name, description, githubRepo, category, appJson, createdAt]
+      required: [id, name, slug, description, githubRepo, category, appJson, createdAt]
       properties:
         id:
           type: integer
         name:
+          type: string
+        slug:
           type: string
         description:
           type: string
@@ -660,6 +662,8 @@ components:
       required: [name, description, githubRepo, category, appJson]
       properties:
         name:
+          type: string
+        slug:
           type: string
         description:
           type: string

@@ -1,10 +1,11 @@
-﻿import { pgTable, text, serial, timestamp, jsonb, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, jsonb, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const templatesTable = pgTable("templates", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
   description: text("description").notNull(),
   githubRepo: text("github_repo").notNull(),
   thumbnail: text("thumbnail"),

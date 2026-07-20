@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,14 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { useGetTemplate, useCreateDeployment } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
+import { useCreateDeployment } from "@workspace/api-client-react";
+import type { Template } from "@workspace/api-client-react";
 import {
   Loader2, Github, ArrowLeft, Bot, Users, Zap, Lock,
   KeyRound, CreditCard, CheckCircle2, Gift, Wallet, AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 
 function fmt(amount: number, currency = "KES") {
   return `${currency} ${(amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
@@ -25,22 +25,77 @@ function authHeader() {
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 }
 
+/** Injects / updates a <meta> tag in <head>. */
+function setMeta(property: string, content: string) {
+  const attr = property.startsWith("og:") || property.startsWith("twitter:") ? "property" : "name";
+  let el = document.querySelector<HTMLMetaElement>(`meta[${attr}="${property}"]`);
+  if (!el) {
+    el = document.createElement("meta");
+    el.setAttribute(attr, property);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("content", content);
+}
+
+function removeMeta(property: string) {
+  const attr = property.startsWith("og:") || property.startsWith("twitter:") ? "property" : "name";
+  document.querySelector(`meta[${attr}="${property}"]`)?.remove();
+}
+
 export default function TemplateDetail() {
   const params = useParams<{ id: string }>();
-  const id = parseInt(params.id ?? "0");
+  const slugOrId = params.id ?? "";
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  const { data: template, isLoading } = useGetTemplate(id);
+  // Accept both numeric IDs (legacy) and slug strings
+  const { data: template, isLoading } = useQuery<Template & { deployCount?: number }>({
+    queryKey: ["template", slugOrId],
+    queryFn: async () => {
+      const res = await fetch(`/api/templates/${encodeURIComponent(slugOrId)}`, {
+        headers: authHeader(),
+      });
+      if (!res.ok) throw new Error("Template not found");
+      return res.json();
+    },
+    enabled: !!slugOrId,
+    retry: false,
+  });
+
   const [botName, setBotName] = useState("");
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [checkingBalance, setCheckingBalance] = useState(false);
 
+  // Inject OG / Twitter meta tags while the page is mounted
+  useEffect(() => {
+    if (!template) return;
+    const url = window.location.href;
+    document.title = `${template.name} — JXHP`;
+    setMeta("og:title", template.name);
+    setMeta("og:description", template.description);
+    setMeta("og:url", url);
+    setMeta("og:type", "website");
+    if (template.thumbnail) setMeta("og:image", template.thumbnail);
+    setMeta("twitter:card", template.thumbnail ? "summary_large_image" : "summary");
+    setMeta("twitter:title", template.name);
+    setMeta("twitter:description", template.description);
+    if (template.thumbnail) setMeta("twitter:image", template.thumbnail);
+    setMeta("description", template.description);
+
+    return () => {
+      // Restore defaults when navigating away
+      document.title = "JXHP";
+      ["og:title","og:description","og:url","og:type","og:image",
+       "twitter:card","twitter:title","twitter:description","twitter:image","description"]
+        .forEach(removeMeta);
+    };
+  }, [template]);
+
   useEffect(() => {
     if (!template || template.isFree) return;
     setCheckingBalance(true);
-    fetch(`${API_BASE}/api/wallet`, { headers: authHeader() })
+    fetch("/api/wallet", { headers: authHeader() })
       .then(r => r.json())
       .then(d => setWalletBalance(d.balance ?? 0))
       .catch(() => setWalletBalance(0))
@@ -72,14 +127,13 @@ export default function TemplateDetail() {
 
   async function handleDeploy(e: React.FormEvent) {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm() || !template) return;
 
-    if (!template?.isFree) {
-      // Deduct from wallet
-      const deductRes = await fetch(`${API_BASE}/api/wallet/deduct`, {
+    if (!template.isFree) {
+      const deductRes = await fetch("/api/wallet/deduct", {
         method: "POST",
         headers: authHeader(),
-        body: JSON.stringify({ templateId: id, description: `Deployed: ${template?.name}` }),
+        body: JSON.stringify({ templateId: template.id, description: `Deployed: ${template.name}` }),
       });
       const deductData = await deductRes.json();
       if (!deductRes.ok) {
@@ -97,7 +151,7 @@ export default function TemplateDetail() {
       setWalletBalance(deductData.newBalance);
     }
 
-    createMutation.mutate({ data: { templateId: id, botName: botName.trim(), envVars } });
+    createMutation.mutate({ data: { templateId: template.id, botName: botName.trim(), envVars } });
   }
 
   if (isLoading) {
@@ -154,19 +208,9 @@ export default function TemplateDetail() {
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold">{template.name}</h1>
               <Badge variant="secondary">{template.category}</Badge>
-              {(template as any).deployCount > 0 && (
+              {(template.deployCount ?? 0) > 0 && (
                 <Badge variant="outline" className="gap-1 text-xs">
-                  <Users className="h-3 w-3" /> {(template as any).deployCount} deployed
-                </Badge>
-              )}
-              {(template as any).deployCount > 0 && (
-                <Badge variant="outline" className="gap-1 text-xs">
-                  <Users className="h-3 w-3" /> {(template as any).deployCount} deployed
-                </Badge>
-              )}
-              {(template as any).deployCount > 0 && (
-                <Badge variant="outline" className="gap-1 text-xs">
-                  <Users className="h-3 w-3" /> {(template as any).deployCount} deployed
+                  <Users className="h-3 w-3" /> {template.deployCount} deployed
                 </Badge>
               )}
               {template.isFree ? (
@@ -180,6 +224,7 @@ export default function TemplateDetail() {
               )}
             </div>
             <p className="text-muted-foreground mt-1 text-sm">{template.description}</p>
+            <p className="text-xs text-muted-foreground/60 mt-0.5 font-mono">/{template.slug}</p>
           </div>
         </div>
 
@@ -299,9 +344,3 @@ export default function TemplateDetail() {
     </Layout>
   );
 }
-
-
-
-
-
-

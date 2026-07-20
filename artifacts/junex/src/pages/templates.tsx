@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { useListTemplates, useListTemplateCategories } from "@workspace/api-client-react";
@@ -109,7 +109,7 @@ export default function Templates() {
                 {/* Action buttons */}
                 <div className="px-5 pb-5 flex gap-2 flex-wrap">
                   <Button size="sm" className="gap-1.5 flex-1" asChild>
-                    <Link href={`/templates/${template.id}`}>
+                    <Link href={`/templates/${template.slug}`}>
                       <Zap className="h-3.5 w-3.5" /> Deploy
                     </Link>
                   </Button>

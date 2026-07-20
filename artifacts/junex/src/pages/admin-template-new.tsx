@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -26,6 +26,7 @@ const CURRENCIES = ["KES", "USD", "NGN", "GHS", "UGX", "TZS", "ZAR"];
 
 const templateSchema = z.object({
   name: z.string().min(2, "Name is required"),
+  slug: z.string().optional().or(z.literal("")),
   description: z.string().min(10, "Description is required"),
   githubRepo: z.string().min(5, "GitHub URL is required"),
   category: z.string().min(2, "Category is required"),
@@ -54,7 +55,7 @@ export default function AdminTemplateNew() {
   const form = useForm<FormValues>({
     resolver: zodResolver(templateSchema),
     defaultValues: {
-      name: "", description: "", githubRepo: "", category: "",
+      name: "", slug: "", description: "", githubRepo: "", category: "",
       thumbnail: "", appJson: "{}", isFree: false, price: 0,
       currency: "KES", pairSiteUrl: "",
     },
@@ -114,6 +115,7 @@ export default function AdminTemplateNew() {
     createTemplate.mutate({
       data: {
         name: values.name,
+        slug: values.slug || undefined,
         description: values.description,
         githubRepo: values.githubRepo,
         category: values.category,
@@ -200,6 +202,23 @@ export default function AdminTemplateNew() {
                     <FormItem>
                       <FormLabel>Name</FormLabel>
                       <FormControl><Input placeholder="My Discord Bot" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="slug" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Slug <span className="text-muted-foreground text-xs">(optional — auto-generated from name)</span>
+                      </FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">/templates/</span>
+                          <Input placeholder="wolf-bot" className="pl-[7.5rem] font-mono text-sm" {...field} />
+                        </div>
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Used in the URL, e.g. /templates/wolf-bot. Leave blank to auto-generate.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )} />

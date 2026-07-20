@@ -1,5 +1,6 @@
-﻿import { createContext, useContext, useState, ReactNode } from "react";
-import { useGetMe, User } from "@workspace/api-client-react";
+import { createContext, useContext, useState, ReactNode } from "react";
+import { useGetMe, getGetMeQueryKey, User } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 
 interface AuthContextType {
@@ -17,6 +18,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => localStorage.getItem("junex_token")
   );
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
 
   const { data: user, isLoading } = useGetMe({
     query: {
@@ -41,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem("junex_token");
     setToken(null);
+    queryClient.removeQueries({ queryKey: getGetMeQueryKey() });
     navigate("/");
   };
 
