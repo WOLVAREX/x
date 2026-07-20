@@ -1,15 +1,16 @@
-﻿import { Router, type IRouter } from "express";
+import { Router, type IRouter } from "express";
 import { db, deploymentsTable, templatesTable, usersTable, paymentsTable, walletTransactionsTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
+import { getSetting, setSetting } from "../lib/settings";
 
 const router: IRouter = Router();
 const HEROKU_BASE = "https://api.heroku.com";
-const HEROKU_API_KEY = process.env.HEROKU_API_KEY ?? "";
 
-function herokuHeaders() {
-  return { Authorization: `Bearer ${HEROKU_API_KEY}`, Accept: "application/vnd.heroku+json; version=3", "Content-Type": "application/json" };
+async function herokuHeaders() {
+  const key = await getSetting("HEROKU_API_KEY");
+  return { Authorization: `Bearer ${key}`, Accept: "application/vnd.heroku+json; version=3", "Content-Type": "application/json" };
 }
 
 function formatTemplate(t: typeof templatesTable.$inferSelect) {
@@ -62,9 +63,9 @@ router.post("/admin/users/:id/suspend", requireAdmin, async (req, res): Promise<
   // Also suspend all their Heroku deployments
   const deployments = await db.select().from(deploymentsTable).where(eq(deploymentsTable.userId, id));
   for (const dep of deployments) {
-    if (dep.herokuAppId && HEROKU_API_KEY) {
+    if (dep.herokuAppId && await getSetting("HEROKU_API_KEY")) {
       await fetch(`${HEROKU_BASE}/apps/${dep.herokuAppId}/formation`, {
-        method: "PATCH", headers: herokuHeaders(),
+        method: "PATCH", headers: await herokuHeaders(),
         body: JSON.stringify({ updates: [{ type: "worker", quantity: 0 }] }),
       }).catch(() => {});
     }
@@ -91,9 +92,9 @@ router.delete("/admin/users/:id", requireAdmin, async (req, res): Promise<void> 
   // Delete all their Heroku apps first
   const deployments = await db.select().from(deploymentsTable).where(eq(deploymentsTable.userId, id));
   for (const dep of deployments) {
-    if (dep.herokuAppId && HEROKU_API_KEY) {
+    if (dep.herokuAppId && await getSetting("HEROKU_API_KEY")) {
       await fetch(`${HEROKU_BASE}/apps/${dep.herokuAppId}`, {
-        method: "DELETE", headers: herokuHeaders(),
+        method: "DELETE", headers: await herokuHeaders(),
       }).catch(() => {});
     }
   }
@@ -126,9 +127,9 @@ router.post("/admin/deployments/:id/suspend", requireAdmin, async (req, res): Pr
   const [dep] = await db.select().from(deploymentsTable).where(eq(deploymentsTable.id, id));
   if (!dep) { res.status(404).json({ error: "Not found" }); return; }
 
-  if (dep.herokuAppId && HEROKU_API_KEY) {
+  if (dep.herokuAppId && await getSetting("HEROKU_API_KEY")) {
     await fetch(`${HEROKU_BASE}/apps/${dep.herokuAppId}/formation`, {
-      method: "PATCH", headers: herokuHeaders(),
+      method: "PATCH", headers: await herokuHeaders(),
       body: JSON.stringify({ updates: [{ type: "worker", quantity: 0 }] }),
     }).catch(() => {});
   }
@@ -147,9 +148,9 @@ router.delete("/admin/deployments/:id", requireAdmin, async (req, res): Promise<
   const [dep] = await db.select().from(deploymentsTable).where(eq(deploymentsTable.id, id));
   if (!dep) { res.status(404).json({ error: "Not found" }); return; }
 
-  if (dep.herokuAppId && HEROKU_API_KEY) {
+  if (dep.herokuAppId && await getSetting("HEROKU_API_KEY")) {
     await fetch(`${HEROKU_BASE}/apps/${dep.herokuAppId}`, {
-      method: "DELETE", headers: herokuHeaders(),
+      method: "DELETE", headers: await herokuHeaders(),
     }).catch(() => {});
   }
 
@@ -167,10 +168,10 @@ router.get("/admin/deployments/:id/logs", requireAdmin, async (req, res): Promis
   let lines = (dep.logs as string[]) ?? [];
 
   // Fetch live Heroku logs too
-  if (dep.herokuAppId && HEROKU_API_KEY) {
+  if (dep.herokuAppId && await getSetting("HEROKU_API_KEY")) {
     try {
       const sessionRes = await fetch(`${HEROKU_BASE}/apps/${dep.herokuAppId}/log-sessions`, {
-        method: "POST", headers: herokuHeaders(),
+        method: "POST", headers: await herokuHeaders(),
         body: JSON.stringify({ lines: 100, tail: false }),
       });
       if (sessionRes.ok) {
@@ -208,9 +209,10 @@ router.get("/admin/health", requireAdmin, async (_req, res): Promise<void> => {
 
   // Heroku connectivity check
   let herokuStatus = "not_configured";
-  if (HEROKU_API_KEY) {
+  const herokuKey = await getSetting("HEROKU_API_KEY");
+  if (herokuKey) {
     try {
-      const r = await fetch(`${HEROKU_BASE}/account`, { headers: herokuHeaders() });
+      const r = await fetch(`${HEROKU_BASE}/account`, { headers: await herokuHeaders() });
       herokuStatus = r.ok ? "connected" : "error";
     } catch { herokuStatus = "error"; }
   }
@@ -284,6 +286,37 @@ router.get("/admin/payments", requireAdmin, async (_req, res): Promise<void> => 
     .leftJoin(usersTable, eq(paymentsTable.userId, usersTable.id))
     .orderBy(desc(paymentsTable.createdAt));
   res.json(rows.map(r => ({ ...r.payment, templateName: r.templateName ?? "Unknown", username: r.username ?? "Unknown", email: r.email ?? "Unknown" })));
+});
+
+// ── Heroku key settings ───────────────────────────────────────────────────
+router.get("/admin/settings/heroku", requireAdmin, async (_req, res): Promise<void> => {
+  const key = await getSetting("HEROKU_API_KEY");
+  // Never expose the full key — only whether one exists, and the last 4 chars
+  if (!key) {
+    res.json({ configured: false, preview: null });
+    return;
+  }
+  res.json({ configured: true, preview: `••••••••${key.slice(-4)}` });
+});
+
+router.post("/admin/settings/heroku", requireAdmin, async (req, res): Promise<void> => {
+  const { apiKey } = req.body;
+  if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length < 10) {
+    res.status(400).json({ error: "A valid Heroku API key is required" });
+    return;
+  }
+
+  // Validate it against Heroku before saving
+  const testRes = await fetch(`${HEROKU_BASE}/account`, {
+    headers: { Authorization: `Bearer ${apiKey.trim()}`, Accept: "application/vnd.heroku+json; version=3" },
+  });
+  if (!testRes.ok) {
+    res.status(400).json({ error: "Heroku rejected the key — double-check it and try again" });
+    return;
+  }
+
+  await setSetting("HEROKU_API_KEY", apiKey.trim());
+  res.json({ success: true, preview: `••••••••${apiKey.trim().slice(-4)}` });
 });
 
 export default router;

@@ -3,15 +3,19 @@ import { db, deploymentsTable, templatesTable, usersTable } from "@workspace/db"
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
+import { getSetting } from "../lib/settings";
 
 const router: IRouter = Router();
 
-const HEROKU_API_KEY = process.env.HEROKU_API_KEY ?? "";
 const HEROKU_BASE = "https://api.heroku.com";
 
-function herokuHeaders(accept = "application/vnd.heroku+json; version=3") {
+async function getHerokuKey(): Promise<string> {
+  return getSetting("HEROKU_API_KEY");
+}
+
+async function herokuHeaders(accept = "application/vnd.heroku+json; version=3") {
   return {
-    Authorization: `Bearer ${HEROKU_API_KEY}`,
+    Authorization: `Bearer ${await getHerokuKey()}`,
     Accept: accept,
     "Content-Type": "application/json",
   };
@@ -59,7 +63,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
 
     const createRes = await fetch(`${HEROKU_BASE}/apps`, {
       method: "POST",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
       body: JSON.stringify({ name: appName, stack: "heroku-22" }),
     });
     const createData = await createRes.json() as any;
@@ -94,7 +98,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     if (Object.keys(configVars).length > 0) {
       const configRes = await fetch(`${HEROKU_BASE}/apps/${appName}/config-vars`, {
         method: "PATCH",
-        headers: herokuHeaders(),
+        headers: await herokuHeaders(),
         body: JSON.stringify(configVars),
       });
       if (!configRes.ok) {
@@ -140,7 +144,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
 
     const buildRes = await fetch(`${HEROKU_BASE}/apps/${appName}/builds`, {
       method: "POST",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
       body: JSON.stringify({
         source_blob: { url: tarballUrl, version: "HEAD" },
       }),
@@ -167,7 +171,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       attempts++;
 
       const statusRes = await fetch(`${HEROKU_BASE}/apps/${appName}/builds/${buildId}`, {
-        headers: herokuHeaders(),
+        headers: await herokuHeaders(),
       });
       const statusData = await statusRes.json() as any;
       buildStatus = statusData.status ?? "pending";
@@ -191,7 +195,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
 
     const scaleRes = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
       method: "PATCH",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
       body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: "eco" }] }),
     });
 
@@ -199,7 +203,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       // Try web dyno as fallback
       const scaleRes2 = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
         method: "PATCH",
-        headers: herokuHeaders(),
+        headers: await herokuHeaders(),
         body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: "eco" }] }),
       });
       if (!scaleRes2.ok) {
@@ -250,7 +254,7 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  if (!HEROKU_API_KEY) {
+  if (!await getHerokuKey()) {
     res.status(500).json({ error: "Heroku API key not configured. Add HEROKU_API_KEY to .env" });
     return;
   }
@@ -323,10 +327,10 @@ router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<voi
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
   const appName = row.deployment.herokuAppId;
-  if (appName && HEROKU_API_KEY) {
+  if (appName && await getHerokuKey()) {
     await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
       method: "PATCH",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
       body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: "eco" }] }),
     });
   }
@@ -352,10 +356,10 @@ router.post("/deployments/:id/stop", requireAuth, async (req, res): Promise<void
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
   const appName = row.deployment.herokuAppId;
-  if (appName && HEROKU_API_KEY) {
+  if (appName && await getHerokuKey()) {
     await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
       method: "PATCH",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
       body: JSON.stringify({ updates: [{ type: "worker", quantity: 0 }] }),
     });
   }
@@ -382,10 +386,10 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
   const appName = row.deployment.herokuAppId;
-  if (appName && HEROKU_API_KEY) {
+  if (appName && await getHerokuKey()) {
     await fetch(`${HEROKU_BASE}/apps/${appName}/dynos`, {
       method: "DELETE",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
     });
   }
 
@@ -409,10 +413,10 @@ router.delete("/deployments/:id", requireAuth, async (req, res): Promise<void> =
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
   // Delete Heroku app too
-  if (row.herokuAppId && HEROKU_API_KEY) {
+  if (row.herokuAppId && await getHerokuKey()) {
     await fetch(`${HEROKU_BASE}/apps/${row.herokuAppId}`, {
       method: "DELETE",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
     }).catch(() => {});
   }
 
@@ -440,10 +444,10 @@ router.patch("/deployments/:id/env", requireAuth, async (req, res): Promise<void
 
   // Push to Heroku if app exists
   const appName = row.deployment.herokuAppId;
-  if (appName && HEROKU_API_KEY) {
+  if (appName && await getHerokuKey()) {
     await fetch(`${HEROKU_BASE}/apps/${appName}/config-vars`, {
       method: "PATCH",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
       body: JSON.stringify(envVars),
     }).catch(() => {});
   }
@@ -471,13 +475,13 @@ router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promis
   if (!deployment) { res.status(404).json({ error: "Not found" }); return; }
   if (!deployment.herokuAppId) { res.status(400).json({ error: "Bot not yet deployed to Heroku" }); return; }
 
-  if (!HEROKU_API_KEY) { res.status(500).json({ error: "Heroku not configured" }); return; }
+  if (!await getHerokuKey()) { res.status(500).json({ error: "Heroku not configured" }); return; }
 
   try {
     // Get a log session from Heroku
     const sessionRes = await fetch(`${HEROKU_BASE}/apps/${deployment.herokuAppId}/log-sessions`, {
       method: "POST",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
       body: JSON.stringify({ lines: 100, tail: false }),
     });
     const sessionData = await sessionRes.json() as any;
@@ -509,13 +513,13 @@ router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promis
   if (!deployment) { res.status(404).json({ error: "Not found" }); return; }
   if (!deployment.herokuAppId) { res.status(400).json({ error: "Bot not yet deployed to Heroku" }); return; }
 
-  if (!HEROKU_API_KEY) { res.status(500).json({ error: "Heroku not configured" }); return; }
+  if (!await getHerokuKey()) { res.status(500).json({ error: "Heroku not configured" }); return; }
 
   try {
     // Get a log session from Heroku
     const sessionRes = await fetch(`${HEROKU_BASE}/apps/${deployment.herokuAppId}/log-sessions`, {
       method: "POST",
-      headers: herokuHeaders(),
+      headers: await herokuHeaders(),
       body: JSON.stringify({ lines: 100, tail: false }),
     });
     const sessionData = await sessionRes.json() as any;

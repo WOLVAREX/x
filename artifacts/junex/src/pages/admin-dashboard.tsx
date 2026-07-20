@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Link } from "wouter";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Layout } from "@/components/layout";
@@ -29,7 +29,7 @@ import {
   Plus, Github, ExternalLink, Bot, ShieldCheck, TrendingUp, Zap,
   Eye, Globe, AlertCircle, CheckCircle2, Clock, XCircle, UserCircle2,
   Pencil, Terminal, UserX, UserCheck, RefreshCw, Database,
-  Wifi, WifiOff, DollarSign,
+  Wifi, WifiOff, DollarSign, KeyRound,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AdminTemplateEditModal } from "@/components/admin-template-edit-modal";
@@ -102,6 +102,9 @@ export default function AdminDashboard() {
   const [isLoadingBotLogs, setIsLoadingBotLogs] = useState(false);
   const [health, setHealth] = useState<any>(null);
   const [isLoadingHealth, setIsLoadingHealth] = useState(false);
+  const [herokuKey, setHerokuKey] = useState("");
+  const [herokuKeyPreview, setHerokuKeyPreview] = useState<string | null>(null);
+  const [isSavingHerokuKey, setIsSavingHerokuKey] = useState(false);
 
   const { data: stats } = useGetAdminStats();
   const { data: users, isLoading: isLoadingUsers } = useListAdminUsers();
@@ -179,11 +182,40 @@ export default function AdminDashboard() {
   async function loadHealth() {
     setIsLoadingHealth(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/health`, { headers: authHeader() });
-      const data = await res.json();
+      const [healthRes, keyRes] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/health`, { headers: authHeader() }),
+        fetch(`${API_BASE}/api/admin/settings/heroku`, { headers: authHeader() }),
+      ]);
+      const data = await healthRes.json();
       setHealth(data);
+      if (keyRes.ok) {
+        const keyData = await keyRes.json();
+        setHerokuKeyPreview(keyData.preview ?? null);
+      }
     } catch { toast({ title: "Failed to load health data", variant: "destructive" }); }
     finally { setIsLoadingHealth(false); }
+  }
+
+  async function saveHerokuKey() {
+    if (!herokuKey.trim()) return;
+    setIsSavingHerokuKey(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings/heroku`, {
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify({ apiKey: herokuKey.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: "Failed to save key", description: data.error, variant: "destructive" });
+        return;
+      }
+      setHerokuKeyPreview(data.preview);
+      setHerokuKey("");
+      setHealth((prev: any) => prev ? { ...prev, integrations: { ...prev.integrations, heroku: "connected" } } : prev);
+      toast({ title: "Heroku key saved", description: "Deployments will now use the new key." });
+    } catch { toast({ title: "Network error", variant: "destructive" }); }
+    finally { setIsSavingHerokuKey(false); }
   }
 
   function handleTabChange(tab: string) {
@@ -638,7 +670,7 @@ export default function AdminDashboard() {
                               <Server className="h-4 w-4" /> Heroku
                             </CardTitle>
                           </CardHeader>
-                          <CardContent>
+                          <CardContent className="space-y-3">
                             <div className="flex items-center gap-2">
                               {health.integrations.heroku === "connected" ? (
                                 <>
@@ -657,9 +689,30 @@ export default function AdminDashboard() {
                                 </>
                               )}
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {health.integrations.heroku === "not_configured" ? "Set HEROKU_API_KEY in .env" : "Heroku API"}
-                            </p>
+                            {herokuKeyPreview && (
+                              <p className="text-xs text-muted-foreground font-mono">{herokuKeyPreview}</p>
+                            )}
+                            <div className="flex gap-2 pt-1">
+                              <div className="relative flex-1">
+                                <KeyRound className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                <Input
+                                  type="password"
+                                  placeholder={herokuKeyPreview ? "Replace key…" : "Paste Heroku API key"}
+                                  className="pl-8 text-xs h-8 font-mono"
+                                  value={herokuKey}
+                                  onChange={(e) => setHerokuKey(e.target.value)}
+                                  onKeyDown={(e) => e.key === "Enter" && saveHerokuKey()}
+                                />
+                              </div>
+                              <Button
+                                size="sm"
+                                className="h-8 px-3 text-xs"
+                                disabled={!herokuKey.trim() || isSavingHerokuKey}
+                                onClick={saveHerokuKey}
+                              >
+                                {isSavingHerokuKey ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                              </Button>
+                            </div>
                           </CardContent>
                         </Card>
                       </div>
