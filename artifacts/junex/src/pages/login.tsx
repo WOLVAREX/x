@@ -1,4 +1,4 @@
-﻿import { useEffect } from "react";
+import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -46,7 +46,7 @@ export default function Login() {
 
   return (
     <Layout>
-      <div className="container flex min-h-screen items-center justify-center px-4 py-12">
+      <div className="flex flex-1 items-center justify-center px-4 py-12">
         <Card className="w-full max-w-[420px] mx-auto">
           <CardHeader className="space-y-1 text-center">
             <div className="flex justify-center mb-2">
@@ -92,7 +92,7 @@ export default function Login() {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" type="password" autoComplete="current-password" {...field} />
+                        <Input placeholder="Enter your password" type="password" autoComplete="current-password" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
