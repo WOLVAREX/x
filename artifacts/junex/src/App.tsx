@@ -1,4 +1,4 @@
-﻿import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,7 +23,9 @@ import DocsPage from "@/pages/docs";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 
-if (import.meta.env.DEV) { setBaseUrl("http://localhost:8080"); }
+// API calls use relative paths proxied to the backend by Vite in dev,
+// and served from the same origin in production.
+setBaseUrl("");
 
 const queryClient = new QueryClient();
 

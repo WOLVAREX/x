@@ -20,8 +20,15 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 25434,
+    port: 5000,
     strictPort: true,
     host: "0.0.0.0",
+    allowedHosts: true,
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
   },
 });
