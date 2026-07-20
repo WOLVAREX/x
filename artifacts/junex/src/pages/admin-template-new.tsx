@@ -68,6 +68,7 @@ export default function AdminTemplateNew() {
         form.setValue("name", data.name ?? "");
         form.setValue("description", (data.description as string) ?? "");
         form.setValue("appJson", JSON.stringify(data.raw, null, 2));
+        if (data.logo) form.setValue("thumbnail", data.logo);
         const env = (data.env as Record<string, { description?: string; required?: boolean }>) ?? {};
         setEnvFields(Object.entries(env).map(([key, val]) => ({
           key, description: val.description ?? "", required: val.required !== false,

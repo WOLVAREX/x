@@ -60,46 +60,44 @@ export default function Templates() {
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {templates?.map((template) => (
               <div key={template.id}
-                className="rounded-xl border border-border/40 bg-card hover:border-primary/30 hover:shadow-md transition-all flex flex-col overflow-hidden">
-                {/* Cover image */}
-                <div className="relative h-32 w-full bg-primary/5 flex-shrink-0 overflow-hidden">
-                  {template.thumbnail ? (
-                    <img
-                      src={template.thumbnail}
-                      alt={template.name}
-                      className="h-full w-full object-cover"
-                      onError={(e) => {
-                        const img = e.currentTarget as HTMLImageElement;
-                        img.style.display = "none";
-                        const fb = img.nextElementSibling as HTMLElement | null;
-                        if (fb) fb.style.removeProperty("display");
-                      }}
-                    />
-                  ) : null}
-                  <div
-                    className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/10 to-primary/5"
-                    style={{ display: template.thumbnail ? "none" : undefined }}
-                  >
-                    <Bot className="h-10 w-10 text-primary/40" />
-                  </div>
-                  {/* Price badge overlay */}
-                  <div className="absolute top-2.5 right-2.5">
-                    {(template.isFree || template.price === 0) ? (
-                      <Badge className="bg-emerald-500/80 text-white border-0 gap-1 text-xs shadow">
-                        <Gift className="h-3 w-3" /> Free
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-background/80 backdrop-blur text-primary border-primary/20 text-xs shadow">
-                        {fmt(template.price, template.currency)}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-
+                className="rounded-xl border border-border/40 bg-card hover:border-primary/30 hover:shadow-md transition-all flex flex-col">
                 <div className="p-4 flex-1">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <h3 className="font-semibold text-sm leading-snug">{template.name}</h3>
-                    <Badge variant="secondary" className="text-xs flex-shrink-0">{template.category}</Badge>
+                  {/* Icon + name row */}
+                  <div className="flex items-start gap-3 mb-2">
+                    <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden border border-border/30">
+                      {template.thumbnail ? (
+                        <img
+                          src={template.thumbnail}
+                          alt={template.name}
+                          className="h-full w-full object-cover rounded-xl"
+                          onError={(e) => {
+                            const img = e.currentTarget as HTMLImageElement;
+                            img.style.display = "none";
+                            const fb = img.nextElementSibling as HTMLElement | null;
+                            if (fb) fb.style.removeProperty("display");
+                          }}
+                        />
+                      ) : null}
+                      <Bot
+                        className="h-5 w-5 text-primary/60"
+                        style={{ display: template.thumbnail ? "none" : undefined }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-semibold text-sm leading-snug">{template.name}</h3>
+                        {(template.isFree || template.price === 0) ? (
+                          <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 gap-1 flex-shrink-0 text-xs">
+                            <Gift className="h-3 w-3" /> Free
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-primary/15 text-primary border-primary/20 flex-shrink-0 text-xs">
+                            {fmt(template.price, template.currency)}
+                          </Badge>
+                        )}
+                      </div>
+                      <Badge variant="secondary" className="text-xs mt-1">{template.category}</Badge>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2">{template.description}</p>
                 </div>
