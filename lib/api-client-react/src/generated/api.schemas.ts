@@ -111,6 +111,8 @@ export interface Deployment {
   userId: number;
   templateId: number;
   templateName: string;
+  /** @nullable */
+  templateThumbnail?: string | null;
   botName: string;
   /** @nullable */
   herokuAppId?: string | null;

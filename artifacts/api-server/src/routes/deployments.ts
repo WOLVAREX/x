@@ -1,4 +1,4 @@
-﻿import { Router, type IRouter } from "express";
+import { Router, type IRouter } from "express";
 import { db, deploymentsTable, templatesTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
@@ -25,12 +25,13 @@ function sanitizeAppName(name: string, id: number): string {
   return `jxhp-${id}-${name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").slice(0, 20)}`;
 }
 
-function formatDeployment(d: typeof deploymentsTable.$inferSelect, templateName: string) {
+function formatDeployment(d: typeof deploymentsTable.$inferSelect, templateName: string, templateThumbnail?: string | null) {
   return {
     id: d.id,
     userId: d.userId,
     templateId: d.templateId,
     templateName,
+    templateThumbnail: templateThumbnail ?? null,
     botName: d.botName,
     herokuAppId: d.herokuAppId ?? null,
     status: d.status,
@@ -232,12 +233,12 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
 router.get("/deployments", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const rows = await db
-    .select({ deployment: deploymentsTable, templateName: templatesTable.name })
+    .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(eq(deploymentsTable.userId, user.id))
     .orderBy(deploymentsTable.createdAt);
-  res.json(rows.map(r => formatDeployment(r.deployment, r.templateName ?? "Unknown")));
+  res.json(rows.map(r => formatDeployment(r.deployment, r.templateName ?? "Unknown", r.templateThumbnail)));
 });
 
 router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
@@ -271,7 +272,7 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
   }).returning();
 
   // Return immediately â€” deploy runs in background
-  res.status(201).json(formatDeployment(deployment, template.name));
+  res.status(201).json(formatDeployment(deployment, template.name, template.thumbnail));
 
   // Fire and forget
   herokuDeploy(deployment.id, template, botName, envVars ?? {}).catch(err => {
@@ -285,13 +286,13 @@ router.get("/deployments/:id", requireAuth, async (req, res): Promise<void> => {
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [row] = await db
-    .select({ deployment: deploymentsTable, templateName: templatesTable.name })
+    .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
 
   if (!row) { res.status(404).json({ error: "Deployment not found" }); return; }
-  res.json(formatDeployment(row.deployment, row.templateName ?? "Unknown"));
+  res.json(formatDeployment(row.deployment, row.templateName ?? "Unknown", row.templateThumbnail));
 });
 
 router.get("/deployments/:id/logs", requireAuth, async (req, res): Promise<void> => {
@@ -315,7 +316,7 @@ router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<voi
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [row] = await db
-    .select({ deployment: deploymentsTable, templateName: templatesTable.name })
+    .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
@@ -335,7 +336,7 @@ router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<voi
     .set({ status: "online", logs: [...logs, `${ts()} Bot started`] })
     .where(eq(deploymentsTable.id, id)).returning();
 
-  res.json(formatDeployment(updated, row.templateName ?? "Unknown"));
+  res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
 });
 
 router.post("/deployments/:id/stop", requireAuth, async (req, res): Promise<void> => {
@@ -344,7 +345,7 @@ router.post("/deployments/:id/stop", requireAuth, async (req, res): Promise<void
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [row] = await db
-    .select({ deployment: deploymentsTable, templateName: templatesTable.name })
+    .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
@@ -364,7 +365,7 @@ router.post("/deployments/:id/stop", requireAuth, async (req, res): Promise<void
     .set({ status: "offline", logs: [...logs, `${ts()} Bot stopped`] })
     .where(eq(deploymentsTable.id, id)).returning();
 
-  res.json(formatDeployment(updated, row.templateName ?? "Unknown"));
+  res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
 });
 
 router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<void> => {
@@ -374,7 +375,7 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [row] = await db
-    .select({ deployment: deploymentsTable, templateName: templatesTable.name })
+    .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
@@ -393,7 +394,7 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
     .set({ status: "online", logs: [...logs, `${ts()} Bot restarted`] })
     .where(eq(deploymentsTable.id, id)).returning();
 
-  res.json(formatDeployment(updated, row.templateName ?? "Unknown"));
+  res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
 });
 
 router.delete("/deployments/:id", requireAuth, async (req, res): Promise<void> => {
@@ -431,7 +432,7 @@ router.patch("/deployments/:id/env", requireAuth, async (req, res): Promise<void
   }
 
   const [row] = await db
-    .select({ deployment: deploymentsTable, templateName: templatesTable.name })
+    .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
@@ -452,7 +453,7 @@ router.patch("/deployments/:id/env", requireAuth, async (req, res): Promise<void
     .set({ envVars, logs: [...logs, `${ts()} Environment variables updated`] })
     .where(eq(deploymentsTable.id, id)).returning();
 
-  res.json(formatDeployment(updated, row.templateName ?? "Unknown"));
+  res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
 });
 
 

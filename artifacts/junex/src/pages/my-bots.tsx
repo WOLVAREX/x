@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { Input } from "@/components/ui/input";
@@ -119,20 +119,41 @@ export default function MyBotsPage() {
         ) : (
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((dep) => (
-              <Card key={dep.id} className="border-border/40 hover:border-primary/25 hover:shadow-md transition-all group flex flex-col">
-                <CardContent className="p-5 flex flex-col flex-1 gap-3">
+              <Card key={dep.id} className="border-border/40 hover:border-primary/25 hover:shadow-md transition-all group flex flex-col overflow-hidden">
+                {/* Cover image */}
+                <div className="relative h-28 w-full bg-primary/5 flex-shrink-0 overflow-hidden">
+                  {dep.templateThumbnail ? (
+                    <img
+                      src={dep.templateThumbnail}
+                      alt={dep.templateName}
+                      className="h-full w-full object-cover"
+                      onError={(e) => {
+                        const img = e.currentTarget as HTMLImageElement;
+                        img.style.display = "none";
+                        const fb = img.nextElementSibling as HTMLElement | null;
+                        if (fb) fb.style.removeProperty("display");
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5"
+                    style={{ display: dep.templateThumbnail ? "none" : undefined }}
+                  >
+                    <Bot className="h-10 w-10 text-primary/30" />
+                  </div>
+                  {/* Status badge overlay */}
+                  <div className="absolute top-2.5 right-2.5">
+                    <StatusBadge status={dep.status} />
+                  </div>
+                </div>
+
+                <CardContent className="p-4 flex flex-col flex-1 gap-3">
                   {/* Header */}
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/15 transition-colors">
-                        <Bot className="h-4 w-4 text-primary" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-sm truncate">{dep.botName}</p>
-                        <p className="text-xs text-muted-foreground truncate">{dep.templateName}</p>
-                      </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm truncate">{dep.botName}</p>
+                      <p className="text-xs text-muted-foreground truncate">{dep.templateName}</p>
                     </div>
-                    <StatusBadge status={dep.status} />
                   </div>
 
                   {/* Meta */}
