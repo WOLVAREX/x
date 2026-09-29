@@ -3,7 +3,7 @@ services:
     name: junex-termux-platform
     runtime: node
     plan: free
-    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @workspace/junex build && pnpm --filter @workspace/api-server build
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
     startCommand: pnpm --filter @workspace/api-server start
     healthCheckPath: /api/healthz
     envVars:
