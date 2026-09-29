@@ -1,4 +1,4 @@
-﻿import { Link } from "wouter";
+import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ const cards = [
   {
     icon: Terminal,
     title: "Full Control",
-    desc: "Live logs, env var editing, start/stop/restart â€” all from one clean dashboard.",
+    desc: "Live logs, env var editing, start/stop/restart — all from one clean dashboard.",
   },
 ];
 
@@ -38,10 +38,10 @@ export default function Home() {
 
   return (
     <Layout>
-      {/* â”€â”€ Hero â”€â”€ */}
+      {/* ── Hero ── */}
       <section className="container mx-auto px-4 py-16 sm:py-24 flex flex-col items-center text-center gap-6">
         <Badge variant="outline" className="px-3 py-1 text-xs font-medium">
-          Now live â€” deploy your first bot free
+          Now live — deploy your first bot free
         </Badge>
 
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-tight max-w-3xl">
@@ -77,7 +77,7 @@ export default function Home() {
         </ul>
       </section>
 
-      {/* â”€â”€ Feature cards â”€â”€ */}
+      {/* ── Feature cards ── */}
       <section className="container mx-auto px-4 pb-16 sm:pb-24">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {cards.map(({ icon: Icon, title, desc }) => (
@@ -95,7 +95,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* â”€â”€ Bottom CTA banner â”€â”€ */}
+      {/* ── Bottom CTA banner ── */}
       <section className="container mx-auto px-4 pb-20">
         <div className="rounded-2xl border border-primary/20 bg-primary/5 p-8 sm:p-12 flex flex-col items-center text-center gap-4">
           <h2 className="text-2xl sm:text-3xl font-bold">Ready to deploy your bot?</h2>

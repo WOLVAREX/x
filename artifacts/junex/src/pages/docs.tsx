@@ -1,4 +1,4 @@
-﻿import { Layout } from "@/components/layout";
+import { Layout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import {
@@ -75,7 +75,7 @@ const sections = [
     content: [
       {
         heading: "Wallet Model",
-        body: "JXHP uses a pre-paid wallet model. You deposit funds first, then spend them deploying bots. There are no recurring charges â€” you pay per deployment.",
+        body: "JXHP uses a pre-paid wallet model. You deposit funds first, then spend them deploying bots. There are no recurring charges — you pay per deployment.",
       },
       {
         heading: "Supported Payment Methods",
@@ -83,7 +83,7 @@ const sections = [
       },
       {
         heading: "Payment Verification",
-        body: "Card payments are verified instantly via the Paystack popup. M-Pesa payments are auto-verified â€” your wallet updates as soon as you enter your PIN and Paystack confirms the transaction.",
+        body: "Card payments are verified instantly via the Paystack popup. M-Pesa payments are auto-verified — your wallet updates as soon as you enter your PIN and Paystack confirms the transaction.",
       },
     ],
   },

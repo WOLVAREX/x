@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,7 +50,7 @@ export function PaymentModal({
     setStep("method"); setPhone(""); setReference(""); setIsLoading(false); setIsVerifying(false);
   }
 
-  // â”€â”€ Card payment via Paystack inline popup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Card payment via Paystack inline popup ─────────────────
   async function handleCardPay() {
     setIsLoading(true);
     try {
@@ -97,7 +97,7 @@ export function PaymentModal({
     }
   }
 
-  // â”€â”€ M-Pesa STK push â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── M-Pesa STK push ────────────────────────────────────────
   async function handleStkPush() {
     if (!phone.trim()) {
       toast({ title: "Enter your M-Pesa phone number", variant: "destructive" });
@@ -125,7 +125,7 @@ export function PaymentModal({
     }
   }
 
-  // â”€â”€ Verify M-Pesa payment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Verify M-Pesa payment ──────────────────────────────────
   async function handleVerify() {
     if (!reference) return;
     setIsVerifying(true);
@@ -148,7 +148,7 @@ export function PaymentModal({
     }
   }
 
-  // â”€â”€ Proceed button on method selection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Proceed button on method selection ────────────────────
   function handleProceed() {
     if (method === "card") {
       handleCardPay();
@@ -169,14 +169,14 @@ export function PaymentModal({
             {step === "done" && "Payment Complete"}
           </DialogTitle>
           <DialogDescription>
-            {step === "method" && `Unlock "${templateName}" â€” ${formatPrice(price, currency)}`}
+            {step === "method" && `Unlock "${templateName}" — ${formatPrice(price, currency)}`}
             {step === "mpesa-phone" && `You will be charged ${formatPrice(price, currency)}`}
             {step === "mpesa-pending" && "Enter your M-Pesa PIN on your phone, then click verify"}
             {step === "done" && "Your bot is being deployed!"}
           </DialogDescription>
         </DialogHeader>
 
-        {/* â”€â”€ Free shortcut â”€â”€ */}
+        {/* ── Free shortcut ── */}
         {isFree && (
           <div className="flex flex-col items-center gap-4 py-6 text-center">
             <div className="h-14 w-14 rounded-full bg-emerald-500/20 flex items-center justify-center">
@@ -189,7 +189,7 @@ export function PaymentModal({
           </div>
         )}
 
-        {/* â”€â”€ Method selection â”€â”€ */}
+        {/* ── Method selection ── */}
         {!isFree && step === "method" && (
           <div className="space-y-4 mt-1">
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border border-border/40">
@@ -243,7 +243,7 @@ export function PaymentModal({
           </div>
         )}
 
-        {/* â”€â”€ M-Pesa phone input â”€â”€ */}
+        {/* ── M-Pesa phone input ── */}
         {!isFree && step === "mpesa-phone" && (
           <div className="space-y-4 mt-1">
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border border-border/40">
@@ -262,7 +262,7 @@ export function PaymentModal({
                 autoFocus
               />
               <p className="text-xs text-muted-foreground">
-                Format: <code>254XXXXXXXXX</code> â€” Safaricom Kenya only
+                Format: <code>254XXXXXXXXX</code> — Safaricom Kenya only
               </p>
             </div>
 
@@ -280,7 +280,7 @@ export function PaymentModal({
           </div>
         )}
 
-        {/* â”€â”€ M-Pesa pending verify â”€â”€ */}
+        {/* ── M-Pesa pending verify ── */}
         {!isFree && step === "mpesa-pending" && (
           <div className="space-y-4 mt-1 text-center">
             <div className="flex flex-col items-center gap-3 py-4">
@@ -300,7 +300,7 @@ export function PaymentModal({
             <Button className="w-full gap-2" onClick={handleVerify} disabled={isVerifying}>
               {isVerifying
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying...</>
-                : <><CheckCircle2 className="h-4 w-4" /> I have paid â€” Verify</>
+                : <><CheckCircle2 className="h-4 w-4" /> I have paid — Verify</>
               }
             </Button>
             <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={reset}>
@@ -309,7 +309,7 @@ export function PaymentModal({
           </div>
         )}
 
-        {/* â”€â”€ Done â”€â”€ */}
+        {/* ── Done ── */}
         {step === "done" && (
           <div className="flex flex-col items-center gap-4 py-6 text-center">
             <div className="h-16 w-16 rounded-full bg-emerald-500/20 flex items-center justify-center">

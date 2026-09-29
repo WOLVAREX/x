@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { Layout } from "@/components/layout";
@@ -104,7 +104,7 @@ export default function Dashboard() {
       <Layout>
         <div className="container px-4 md:px-8 py-6 md:py-10 mx-auto max-w-6xl space-y-8">
 
-          {/* â”€â”€ Welcome banner â”€â”€ */}
+          {/* ── Welcome banner ── */}
           <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 md:p-8">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/4 blur-3xl pointer-events-none" />
             <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -115,7 +115,7 @@ export default function Dashboard() {
                 </h1>
                 <p className="text-sm text-muted-foreground mt-2">
                   {summary?.totalDeployments
-                    ? `You have ${summary.totalDeployments} bot${summary.totalDeployments !== 1 ? "s" : ""} deployed â€” ${summary.onlineCount} online`
+                    ? `You have ${summary.totalDeployments} bot${summary.totalDeployments !== 1 ? "s" : ""} deployed — ${summary.onlineCount} online`
                     : "Welcome to JXHP. Deploy your first bot to get started."}
                 </p>
               </div>
@@ -141,7 +141,7 @@ export default function Dashboard() {
             </div>
           ) : summary ? (
             <>
-              {/* â”€â”€ Stat cards â”€â”€ */}
+              {/* ── Stat cards ── */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                 {[
                   {
@@ -187,7 +187,7 @@ export default function Dashboard() {
                 ))}
               </div>
 
-              {/* â”€â”€ Wallet balance strip â”€â”€ */}
+              {/* ── Wallet balance strip ── */}
               <Card className="border-border/40">
                 <CardContent className="p-4 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
@@ -212,7 +212,7 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
-              {/* â”€â”€ Bots â”€â”€ */}
+              {/* ── Bots ── */}
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold">Your Bots</h2>
@@ -317,7 +317,7 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* â”€â”€ Quick links â”€â”€ */}
+              {/* ── Quick links ── */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Card className="border-border/40 hover:border-primary/20 transition-colors group cursor-pointer" onClick={() => window.location.href = "/templates"}>
                   <CardContent className="p-5 flex items-center gap-4">

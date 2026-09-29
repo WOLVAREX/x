@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
@@ -235,7 +235,7 @@ export default function DeploymentDetail() {
             <div>
               <h1 className="text-xl font-bold">{deployment.botName}</h1>
               <p className="text-xs text-muted-foreground">
-                {deployment.templateName} &nbsp;Â·&nbsp; {format(new Date(deployment.createdAt), "MMM d, yyyy Â· h:mm a")}
+                {deployment.templateName} &nbsp;·&nbsp; {format(new Date(deployment.createdAt), "MMM d, yyyy · h:mm a")}
               </p>
             </div>
           </div>
@@ -309,7 +309,7 @@ export default function DeploymentDetail() {
             )}
           </div>
 
-          {/* â”€â”€ Logs Tab â”€â”€ */}
+          {/* ── Logs Tab ── */}
           <TabsContent value="logs" className="mt-4">
             <Card className="border-border/40">
               <CardHeader className="py-3 px-4 border-b border-border/40 flex flex-row items-center gap-2 space-y-0">
@@ -351,7 +351,7 @@ export default function DeploymentDetail() {
             </Card>
           </TabsContent>
 
-          {/* â”€â”€ Configuration Tab â”€â”€ */}
+          {/* ── Configuration Tab ── */}
           <TabsContent value="config" className="mt-4 space-y-5">
             <Card className="border-border/40">
               <CardHeader>

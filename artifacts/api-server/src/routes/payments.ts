@@ -1,4 +1,4 @@
-﻿import { Router, type IRouter } from "express";
+import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { db, paymentsTable, templatesTable } from "@workspace/db";
@@ -20,7 +20,7 @@ function generateReference() {
   return `JUNEX-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 
-// â”€â”€ Check if user has paid for a template â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Check if user has paid for a template ─────────────────────
 router.get("/payments/check/:templateId", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const templateId = parseInt(req.params.templateId as string, 10);
@@ -40,7 +40,7 @@ router.get("/payments/check/:templateId", requireAuth, async (req, res): Promise
   res.json({ paid: !!payment, isFree: false, payment: payment ?? null });
 });
 
-// â”€â”€ Initiate card payment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Initiate card payment ──────────────────────────────────────
 router.post("/payments/initiate", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { templateId, currency, callbackUrl } = req.body;
@@ -75,7 +75,7 @@ router.post("/payments/initiate", requireAuth, async (req, res): Promise<void> =
         amount: template.price,     // already in kobo/cents
         currency: useCurrency,
         reference,
-        callback_url: callbackUrl ?? `${process.env.FRONTEND_URL}/payment-callback`,
+        callback_url: callbackUrl ?? `${process.env.FRONTEND_URL ?? process.env.RENDER_EXTERNAL_URL ?? "http://localhost:5000"}/payment-callback`,
         metadata: { templateId: template.id, templateName: template.name },
       }),
     });
@@ -98,7 +98,7 @@ router.post("/payments/initiate", requireAuth, async (req, res): Promise<void> =
   }
 });
 
-// â”€â”€ STK Push (M-Pesa) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── STK Push (M-Pesa) ─────────────────────────────────────────
 router.post("/payments/stk-push", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { phone, templateId } = req.body;
@@ -153,7 +153,7 @@ router.post("/payments/stk-push", requireAuth, async (req, res): Promise<void> =
   }
 });
 
-// â”€â”€ Verify payment + unlock deployment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Verify payment + unlock deployment ───────────────────────
 router.get("/payments/verify/:reference", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const raw = Array.isArray(req.params.reference) ? req.params.reference[0] : req.params.reference;
@@ -199,7 +199,7 @@ router.get("/payments/verify/:reference", requireAuth, async (req, res): Promise
   }
 });
 
-// â”€â”€ Paystack Webhook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Paystack Webhook ──────────────────────────────────────────
 router.post("/payments/webhook", async (req, res): Promise<void> => {
   const hash = req.headers["x-paystack-signature"];
   // In production verify HMAC-SHA512 signature here
@@ -218,7 +218,7 @@ router.post("/payments/webhook", async (req, res): Promise<void> => {
   res.sendStatus(200);
 });
 
-// â”€â”€ List user payments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── List user payments ────────────────────────────────────────
 router.get("/payments/my", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const rows = await db

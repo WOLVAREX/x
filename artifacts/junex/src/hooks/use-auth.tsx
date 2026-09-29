@@ -22,18 +22,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const { data: user, isLoading } = useGetMe({
     query: {
+      queryKey: getGetMeQueryKey(),
       enabled: !!token,
       retry: false,
     },
   });
 
-  // Called after email/password login â€” we already have the user object
+  // Called after email/password login — we already have the user object
   const login = (user: User, newToken: string) => {
     localStorage.setItem("junex_token", newToken);
     setToken(newToken);
   };
 
-  // Called after OAuth redirect â€” we only have the token, fetch user via useGetMe
+  // Called after OAuth redirect — we only have the token, fetch user via useGetMe
   const loginWithToken = (newToken: string) => {
     localStorage.setItem("junex_token", newToken);
     setToken(newToken);

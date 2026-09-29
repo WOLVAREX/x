@@ -13,6 +13,7 @@ export * from './appJsonResultRaw';
 export * from './authResponse';
 export * from './dashboardSummary';
 export * from './deployment';
+export * from './deploymentEnvVars';
 export * from './deploymentInput';
 export * from './deploymentInputEnvVars';
 export * from './deploymentLogs';

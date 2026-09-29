@@ -1,4 +1,4 @@
-﻿import { Router, type IRouter } from "express";
+import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { db, usersTable, walletTransactionsTable, templatesTable } from "@workspace/db";
@@ -8,7 +8,7 @@ import crypto from "crypto";
 const router: IRouter = Router();
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY ?? "";
 const PAYSTACK_BASE = "https://api.paystack.co";
-const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:25434";
+const FRONTEND_URL = process.env.FRONTEND_URL ?? process.env.RENDER_EXTERNAL_URL ?? "http://localhost:5000";
 
 function paystackHeaders() {
   return { Authorization: `Bearer ${PAYSTACK_SECRET}`, "Content-Type": "application/json" };
@@ -39,7 +39,7 @@ async function creditWallet(userId: number, amount: number, currency: string, re
   return newBalance;
 }
 
-// â”€â”€ Get wallet balance + transactions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Get wallet balance + transactions ────────────────────
 router.get("/wallet", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const [fresh] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
@@ -52,7 +52,7 @@ router.get("/wallet", requireAuth, async (req, res): Promise<void> => {
   res.json({ balance: fresh?.walletBalance ?? 0, currency: "KES", transactions });
 });
 
-// â”€â”€ Initiate card deposit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Initiate card deposit ─────────────────────────────────
 router.post("/wallet/deposit/card", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { amount, currency } = req.body;
@@ -92,7 +92,7 @@ router.post("/wallet/deposit/card", requireAuth, async (req, res): Promise<void>
   }
 });
 
-// â”€â”€ Initiate M-Pesa STK push â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Initiate M-Pesa STK push ──────────────────────────────
 router.post("/wallet/deposit/mpesa", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { phone, amount } = req.body;
@@ -134,7 +134,7 @@ router.post("/wallet/deposit/mpesa", requireAuth, async (req, res): Promise<void
   }
 });
 
-// â”€â”€ Verify + auto-credit wallet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Verify + auto-credit wallet ───────────────────────────
 router.get("/wallet/verify/:reference", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const ref = req.params.reference as string;
@@ -176,7 +176,7 @@ router.get("/wallet/verify/:reference", requireAuth, async (req, res): Promise<v
   }
 });
 
-// â”€â”€ Paystack Webhook (auto-credit on charge.success) â”€â”€â”€â”€â”€
+// ── Paystack Webhook (auto-credit on charge.success) ─────
 router.post("/wallet/webhook", async (req, res): Promise<void> => {
   // Verify HMAC signature
   const signature = req.headers["x-paystack-signature"] as string;
@@ -217,7 +217,7 @@ router.post("/wallet/webhook", async (req, res): Promise<void> => {
   res.sendStatus(200);
 });
 
-// â”€â”€ Can deploy check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Can deploy check ─────────────────────────────────────
 router.get("/wallet/can-deploy/:templateId", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const templateId = parseInt(req.params.templateId as string, 10);
@@ -230,7 +230,7 @@ router.get("/wallet/can-deploy/:templateId", requireAuth, async (req, res): Prom
   res.json({ canDeploy, isFree: false, balance, required: template.price, shortfall: canDeploy ? 0 : template.price - balance, currency: template.currency });
 });
 
-// â”€â”€ Deduct from wallet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Deduct from wallet ───────────────────────────────────
 router.post("/wallet/deduct", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { templateId, description } = req.body;

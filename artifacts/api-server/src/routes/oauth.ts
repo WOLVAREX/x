@@ -1,4 +1,4 @@
-﻿import { Router, type IRouter } from "express";
+import { Router, type IRouter } from "express";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as GitHubStrategy } from "passport-github2";
@@ -8,10 +8,10 @@ import { signToken } from "../lib/auth";
 
 const router: IRouter = Router();
 
-const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:25434";
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
+const FRONTEND_URL = process.env.FRONTEND_URL ?? process.env.RENDER_EXTERNAL_URL ?? "http://localhost:5000";
+const BACKEND_URL = process.env.BACKEND_URL ?? process.env.RENDER_EXTERNAL_URL ?? "http://localhost:8080";
 
-// â”€â”€ Google Strategy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Google Strategy ──────────────────────────────────────────
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   passport.use(
     new GoogleStrategy(
@@ -67,10 +67,10 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     )
   );
 } else {
-  console.warn("GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set â€” Google OAuth disabled.");
+  console.warn("GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set — Google OAuth disabled.");
 }
 
-// â”€â”€ GitHub Strategy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── GitHub Strategy ──────────────────────────────────────────
 if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
   passport.use(
     new GitHubStrategy(
@@ -124,10 +124,10 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     )
   );
 } else {
-  console.warn("GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET not set â€” GitHub OAuth disabled.");
+  console.warn("GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET not set — GitHub OAuth disabled.");
 }
 
-// â”€â”€ Google Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Google Routes ─────────────────────────────────────────────
 router.get(
   "/auth/google",
   passport.authenticate("google", { scope: ["profile", "email"], session: false })
@@ -143,7 +143,7 @@ router.get(
   }
 );
 
-// â”€â”€ GitHub Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── GitHub Routes ─────────────────────────────────────────────
 router.get(
   "/auth/github",
   passport.authenticate("github", { scope: ["user:email"], session: false })

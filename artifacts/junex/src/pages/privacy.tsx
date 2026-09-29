@@ -1,4 +1,4 @@
-﻿import { Layout } from "@/components/layout";
+import { Layout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
 import { Shield } from "lucide-react";
 
@@ -54,11 +54,11 @@ export default function PrivacyPage() {
             <h2 className="text-base font-semibold text-foreground mb-3">4. Third-Party Services</h2>
             <p>JXHP integrates with the following third-party services:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li><strong className="text-foreground">Heroku</strong> â€” Bot hosting and deployment</li>
-              <li><strong className="text-foreground">Paystack</strong> â€” Payment processing</li>
-              <li><strong className="text-foreground">Google OAuth</strong> â€” Optional sign-in</li>
-              <li><strong className="text-foreground">GitHub OAuth</strong> â€” Optional sign-in</li>
-              <li><strong className="text-foreground">Neon</strong> â€” Database hosting</li>
+              <li><strong className="text-foreground">Heroku</strong> — Bot hosting and deployment</li>
+              <li><strong className="text-foreground">Paystack</strong> — Payment processing</li>
+              <li><strong className="text-foreground">Google OAuth</strong> — Optional sign-in</li>
+              <li><strong className="text-foreground">GitHub OAuth</strong> — Optional sign-in</li>
+              <li><strong className="text-foreground">Neon</strong> — Database hosting</li>
             </ul>
             <p className="mt-2">Each of these services has their own privacy policies that govern data they collect.</p>
           </section>

@@ -9,10 +9,16 @@ import type { TemplateInputAppJson } from './templateInputAppJson';
 
 export interface TemplateInput {
   name: string;
+  slug?: string;
   description: string;
   githubRepo: string;
   /** @nullable */
   thumbnail?: string | null;
   category: string;
   appJson: TemplateInputAppJson;
+  isFree?: boolean;
+  price?: number;
+  currency?: string;
+  /** @nullable */
+  pairSiteUrl?: string | null;
 }

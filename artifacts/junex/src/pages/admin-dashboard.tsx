@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/components/protected-route";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -134,7 +135,7 @@ export default function AdminDashboard() {
   async function handleSuspendUser(userId: number, username: string) {
     const res = await fetch(`${API_BASE}/api/admin/users/${userId}/suspend`, { method: "POST", headers: authHeader() });
     if (res.ok) {
-      toast({ title: `${username} suspended â€” all bots stopped` });
+      toast({ title: `${username} suspended — all bots stopped` });
       queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListAdminDeploymentsQueryKey() });
     } else { toast({ title: "Failed to suspend user", variant: "destructive" }); }
@@ -151,7 +152,7 @@ export default function AdminDashboard() {
   async function handleDeleteUser(userId: number) {
     const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, { method: "DELETE", headers: authHeader() });
     if (res.ok) {
-      toast({ title: "User deleted â€” all bots removed from Heroku" });
+      toast({ title: "User deleted — all bots removed from Heroku" });
       queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListAdminDeploymentsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
@@ -313,7 +314,7 @@ export default function AdminDashboard() {
                 </TabsTrigger>
               </TabsList>
 
-              {/* â”€â”€ Templates Tab â”€â”€ */}
+              {/* ── Templates Tab ── */}
               <TabsContent value="templates" className="mt-6">
                 {isLoadingTemplates ? (
                   <div className="flex h-40 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>
@@ -405,7 +406,7 @@ export default function AdminDashboard() {
                 )}
               </TabsContent>
 
-              {/* â”€â”€ Bots Tab â”€â”€ */}
+              {/* ── Bots Tab ── */}
               <TabsContent value="deployments" className="mt-6">
                 <Card className="border-border/40">
                   <CardHeader className="pb-4">
@@ -504,7 +505,7 @@ export default function AdminDashboard() {
                 </Card>
               </TabsContent>
 
-              {/* â”€â”€ Users Tab â”€â”€ */}
+              {/* ── Users Tab ── */}
               <TabsContent value="users" className="mt-6">
                 <Card className="border-border/40">
                   <CardHeader className="pb-4">
@@ -625,7 +626,7 @@ export default function AdminDashboard() {
                 </Card>
               </TabsContent>
 
-              {/* â”€â”€ Platform Health Tab â”€â”€ */}
+              {/* ── Platform Health Tab ── */}
               <TabsContent value="health" className="mt-6">
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">

@@ -57,7 +57,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
   const appName = sanitizeAppName(botName, deploymentId);
 
   try {
-    // â”€â”€ Step 1: Create Heroku app â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 1: Create Heroku app ────────────────────────────
     await appendLog(deploymentId, "Initializing deployment...");
     await appendLog(deploymentId, `Creating Heroku app: ${appName}`);
 
@@ -82,7 +82,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       .set({ herokuAppId: createData.name })
       .where(eq(deploymentsTable.id, deploymentId));
 
-    // â”€â”€ Step 2: Set environment variables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 2: Set environment variables ───────────────────
     await appendLog(deploymentId, "Configuring environment variables...");
 
     const configVars: Record<string, string> = { ...envVars };
@@ -103,13 +103,13 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       });
       if (!configRes.ok) {
         const configData = await configRes.json() as any;
-        await appendLog(deploymentId, `WARNING: Config vars partially set â€” ${configData.message ?? "unknown error"}`);
+        await appendLog(deploymentId, `WARNING: Config vars partially set — ${configData.message ?? "unknown error"}`);
       } else {
         await appendLog(deploymentId, `${Object.keys(configVars).length} environment variable(s) configured`);
       }
     }
 
-    // â”€â”€ Step 3: Connect GitHub repo and create build â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 3: Connect GitHub repo and create build ─────────
     await appendLog(deploymentId, `Fetching source from ${template.githubRepo}...`);
 
     // Get latest tarball from GitHub
@@ -139,7 +139,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       return;
     }
 
-    // â”€â”€ Step 4: Create build from tarball â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 4: Create build from tarball ───────────────────
     await appendLog(deploymentId, "Starting build on Heroku...");
 
     const buildRes = await fetch(`${HEROKU_BASE}/apps/${appName}/builds`, {
@@ -152,7 +152,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     const buildData = await buildRes.json() as any;
 
     if (!buildRes.ok) {
-      await appendLog(deploymentId, `ERROR: Build failed to start â€” ${buildData.message ?? "unknown"}`);
+      await appendLog(deploymentId, `ERROR: Build failed to start — ${buildData.message ?? "unknown"}`);
       await db.update(deploymentsTable).set({ status: "error" }).where(eq(deploymentsTable.id, deploymentId));
       return;
     }
@@ -161,7 +161,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     await appendLog(deploymentId, `Build started (ID: ${buildId})`);
     await appendLog(deploymentId, "Compiling dependencies...");
 
-    // â”€â”€ Step 5: Poll build status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 5: Poll build status ────────────────────────────
     let buildStatus = "pending";
     let attempts = 0;
     const maxAttempts = 60; // 5 min timeout
@@ -190,7 +190,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
 
     await appendLog(deploymentId, "Build succeeded!");
 
-    // â”€â”€ Step 6: Scale dynos (start the bot) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 6: Scale dynos (start the bot) ─────────────────
     await appendLog(deploymentId, "Starting bot dyno...");
 
     const scaleRes = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
@@ -215,7 +215,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       await appendLog(deploymentId, "Worker dyno started (1x eco)");
     }
 
-    // â”€â”€ Step 7: Mark as online â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 7: Mark as online ───────────────────────────────
     await appendLog(deploymentId, "");
     await appendLog(deploymentId, "Deployment successful!");
     await appendLog(deploymentId, `Your bot is live at: https://${appName}.herokuapp.com`);
@@ -232,7 +232,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
   }
 }
 
-// â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Routes ────────────────────────────────────────────────
 
 router.get("/deployments", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
@@ -275,7 +275,7 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
     ],
   }).returning();
 
-  // Return immediately â€” deploy runs in background
+  // Return immediately — deploy runs in background
   res.status(201).json(formatDeployment(deployment, template.name, template.thumbnail));
 
   // Fire and forget
@@ -461,7 +461,7 @@ router.patch("/deployments/:id/env", requireAuth, async (req, res): Promise<void
 });
 
 
-// â”€â”€ Live logs from Heroku â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Live logs from Heroku ─────────────────────────────────
 router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const id = parseInt(req.params.id as string, 10);
@@ -499,7 +499,7 @@ router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promis
   }
 });
 
-// â”€â”€ Live logs from Heroku â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Live logs from Heroku ─────────────────────────────────
 router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const id = parseInt(req.params.id as string, 10);

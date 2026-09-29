@@ -10,11 +10,17 @@ import type { TemplateAppJson } from './templateAppJson';
 export interface Template {
   id: number;
   name: string;
+  slug: string;
   description: string;
   githubRepo: string;
   /** @nullable */
   thumbnail?: string | null;
   category: string;
   appJson: TemplateAppJson;
+  isFree: boolean;
+  price: number;
+  currency: string;
+  /** @nullable */
+  pairSiteUrl: string | null;
   createdAt: string;
 }

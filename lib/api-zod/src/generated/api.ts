@@ -83,6 +83,7 @@ export const ListTemplatesQueryParams = zod.object({
 export const ListTemplatesResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "slug": zod.string(),
   "description": zod.string(),
   "githubRepo": zod.string(),
   "thumbnail": zod.string().nullish(),
@@ -90,6 +91,10 @@ export const ListTemplatesResponseItem = zod.object({
   "appJson": zod.object({
 
 }).passthrough(),
+  "isFree": zod.boolean(),
+  "price": zod.number(),
+  "currency": zod.string(),
+  "pairSiteUrl": zod.string().nullable(),
   "createdAt": zod.string()
 })
 export const ListTemplatesResponse = zod.array(ListTemplatesResponseItem)
@@ -100,13 +105,18 @@ export const ListTemplatesResponse = zod.array(ListTemplatesResponseItem)
  */
 export const CreateTemplateBody = zod.object({
   "name": zod.string(),
+  "slug": zod.string().optional(),
   "description": zod.string(),
   "githubRepo": zod.string(),
   "thumbnail": zod.string().nullish(),
   "category": zod.string(),
   "appJson": zod.object({
 
-}).passthrough()
+}).passthrough(),
+  "isFree": zod.boolean().optional(),
+  "price": zod.number().optional(),
+  "currency": zod.string().optional(),
+  "pairSiteUrl": zod.string().nullish()
 })
 
 
@@ -127,6 +137,7 @@ export const GetTemplateParams = zod.object({
 export const GetTemplateResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "slug": zod.string(),
   "description": zod.string(),
   "githubRepo": zod.string(),
   "thumbnail": zod.string().nullish(),
@@ -134,6 +145,10 @@ export const GetTemplateResponse = zod.object({
   "appJson": zod.object({
 
 }).passthrough(),
+  "isFree": zod.boolean(),
+  "price": zod.number(),
+  "currency": zod.string(),
+  "pairSiteUrl": zod.string().nullable(),
   "createdAt": zod.string()
 })
 
@@ -153,12 +168,17 @@ export const UpdateTemplateBody = zod.object({
   "category": zod.string().optional(),
   "appJson": zod.object({
 
-}).passthrough().optional()
+}).passthrough().optional(),
+  "isFree": zod.boolean().optional(),
+  "price": zod.number().optional(),
+  "currency": zod.string().optional(),
+  "pairSiteUrl": zod.string().nullish()
 })
 
 export const UpdateTemplateResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "slug": zod.string(),
   "description": zod.string(),
   "githubRepo": zod.string(),
   "thumbnail": zod.string().nullish(),
@@ -166,6 +186,10 @@ export const UpdateTemplateResponse = zod.object({
   "appJson": zod.object({
 
 }).passthrough(),
+  "isFree": zod.boolean(),
+  "price": zod.number(),
+  "currency": zod.string(),
+  "pairSiteUrl": zod.string().nullable(),
   "createdAt": zod.string()
 })
 
@@ -190,7 +214,9 @@ export const ListDeploymentsResponseItem = zod.object({
   "herokuAppId": zod.string().nullish(),
   "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "templateThumbnail": zod.string().nullish(),
+  "envVars": zod.record(zod.string(), zod.string()).optional()
 })
 export const ListDeploymentsResponse = zod.array(ListDeploymentsResponseItem)
 
@@ -221,7 +247,9 @@ export const GetDeploymentResponse = zod.object({
   "herokuAppId": zod.string().nullish(),
   "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "templateThumbnail": zod.string().nullish(),
+  "envVars": zod.record(zod.string(), zod.string()).optional()
 })
 
 
@@ -249,7 +277,9 @@ export const StartDeploymentResponse = zod.object({
   "herokuAppId": zod.string().nullish(),
   "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "templateThumbnail": zod.string().nullish(),
+  "envVars": zod.record(zod.string(), zod.string()).optional()
 })
 
 
@@ -269,7 +299,9 @@ export const StopDeploymentResponse = zod.object({
   "herokuAppId": zod.string().nullish(),
   "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "templateThumbnail": zod.string().nullish(),
+  "envVars": zod.record(zod.string(), zod.string()).optional()
 })
 
 
@@ -289,7 +321,9 @@ export const RestartDeploymentResponse = zod.object({
   "herokuAppId": zod.string().nullish(),
   "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "templateThumbnail": zod.string().nullish(),
+  "envVars": zod.record(zod.string(), zod.string()).optional()
 })
 
 
@@ -325,7 +359,9 @@ export const UpdateDeploymentEnvResponse = zod.object({
   "herokuAppId": zod.string().nullish(),
   "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "templateThumbnail": zod.string().nullish(),
+  "envVars": zod.record(zod.string(), zod.string()).optional()
 })
 
 
@@ -346,7 +382,9 @@ export const GetDashboardSummaryResponse = zod.object({
   "herokuAppId": zod.string().nullish(),
   "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "templateThumbnail": zod.string().nullish(),
+  "envVars": zod.record(zod.string(), zod.string()).optional()
 }))
 })
 
@@ -387,7 +425,9 @@ export const ListAdminDeploymentsResponseItem = zod.object({
   "herokuAppId": zod.string().nullish(),
   "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "templateThumbnail": zod.string().nullish(),
+  "envVars": zod.record(zod.string(), zod.string()).optional()
 })
 export const ListAdminDeploymentsResponse = zod.array(ListAdminDeploymentsResponseItem)
 
@@ -429,7 +469,9 @@ export const SuspendDeploymentResponse = zod.object({
   "herokuAppId": zod.string().nullish(),
   "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
   "createdAt": zod.string(),
-  "updatedAt": zod.string().optional()
+  "updatedAt": zod.string().optional(),
+  "templateThumbnail": zod.string().nullish(),
+  "envVars": zod.record(zod.string(), zod.string()).optional()
 })
 
 

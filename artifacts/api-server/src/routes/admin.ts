@@ -24,7 +24,7 @@ function formatTemplate(t: typeof templatesTable.$inferSelect) {
   };
 }
 
-// â”€â”€ Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Stats ─────────────────────────────────────────────────
 router.get("/admin/stats", requireAdmin, async (_req, res): Promise<void> => {
   const users = await db.select().from(usersTable);
   const deployments = await db.select().from(deploymentsTable);
@@ -43,7 +43,7 @@ router.get("/admin/stats", requireAdmin, async (_req, res): Promise<void> => {
   });
 });
 
-// â”€â”€ List users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── List users ────────────────────────────────────────────
 router.get("/admin/users", requireAdmin, async (_req, res): Promise<void> => {
   const users = await db.select().from(usersTable).orderBy(usersTable.createdAt);
   res.json(users.map(u => ({
@@ -53,7 +53,7 @@ router.get("/admin/users", requireAdmin, async (_req, res): Promise<void> => {
   })));
 });
 
-// â”€â”€ Suspend user â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Suspend user ──────────────────────────────────────────
 router.post("/admin/users/:id/suspend", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -75,7 +75,7 @@ router.post("/admin/users/:id/suspend", requireAdmin, async (req, res): Promise<
   res.json({ id: user.id, username: user.username, suspended: true, message: "User suspended and all bots stopped" });
 });
 
-// â”€â”€ Unsuspend user â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Unsuspend user ────────────────────────────────────────
 router.post("/admin/users/:id/unsuspend", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -84,7 +84,7 @@ router.post("/admin/users/:id/unsuspend", requireAdmin, async (req, res): Promis
   res.json({ id: user.id, username: user.username, suspended: false, message: "User unsuspended" });
 });
 
-// â”€â”€ Delete user â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Delete user ───────────────────────────────────────────
 router.delete("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -104,7 +104,7 @@ router.delete("/admin/users/:id", requireAdmin, async (req, res): Promise<void> 
   res.sendStatus(204);
 });
 
-// â”€â”€ List deployments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── List deployments ──────────────────────────────────────
 router.get("/admin/deployments", requireAdmin, async (_req, res): Promise<void> => {
   const rows = await db
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, username: usersTable.username })
@@ -120,7 +120,7 @@ router.get("/admin/deployments", requireAdmin, async (_req, res): Promise<void> 
   })));
 });
 
-// â”€â”€ Suspend bot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Suspend bot ───────────────────────────────────────────
 router.post("/admin/deployments/:id/suspend", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -141,7 +141,7 @@ router.post("/admin/deployments/:id/suspend", requireAdmin, async (req, res): Pr
   res.json({ id: updated.id, status: updated.status, botName: updated.botName });
 });
 
-// â”€â”€ Admin delete bot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Admin delete bot ──────────────────────────────────────
 router.delete("/admin/deployments/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -158,7 +158,7 @@ router.delete("/admin/deployments/:id", requireAdmin, async (req, res): Promise<
   res.sendStatus(204);
 });
 
-// â”€â”€ Admin view bot logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Admin view bot logs ───────────────────────────────────
 router.get("/admin/deployments/:id/logs", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -187,7 +187,7 @@ router.get("/admin/deployments/:id/logs", requireAdmin, async (req, res): Promis
   res.json({ lines, status: dep.status, botName: dep.botName, herokuAppId: dep.herokuAppId });
 });
 
-// â”€â”€ Platform Health â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Platform Health ───────────────────────────────────────
 router.get("/admin/health", requireAdmin, async (_req, res): Promise<void> => {
   const deployments = await db.select().from(deploymentsTable);
   const users = await db.select().from(usersTable);
@@ -226,7 +226,7 @@ router.get("/admin/health", requireAdmin, async (_req, res): Promise<void> => {
   });
 });
 
-// â”€â”€ Edit template â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Edit template ─────────────────────────────────────────
 router.patch("/admin/templates/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -247,7 +247,7 @@ router.patch("/admin/templates/:id", requireAdmin, async (req, res): Promise<voi
   res.json(formatTemplate(template));
 });
 
-// â”€â”€ Fetch app.json â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Fetch app.json ────────────────────────────────────────
 router.post("/admin/fetch-app-json", requireAdmin, async (req, res): Promise<void> => {
   const { repoUrl } = req.body;
   if (!repoUrl) { res.status(400).json({ error: "repoUrl is required" }); return; }

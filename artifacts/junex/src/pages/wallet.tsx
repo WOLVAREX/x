@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -370,7 +370,7 @@ export default function WalletPage() {
         )}
       </div>
 
-      {/* â”€â”€ Deposit Modal â”€â”€ */}
+      {/* ── Deposit Modal ── */}
       <Dialog open={showDeposit} onOpenChange={(v) => { setShowDeposit(v); if (!v) resetDeposit(); }}>
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
@@ -393,7 +393,7 @@ export default function WalletPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {/* â”€â”€ Step: Amount â”€â”€ */}
+          {/* ── Step: Amount ── */}
           {step === "amount" && (
             <div className="space-y-4 mt-1">
               <div className="grid grid-cols-2 gap-3">
@@ -436,7 +436,7 @@ export default function WalletPage() {
             </div>
           )}
 
-          {/* â”€â”€ Step: Method â”€â”€ */}
+          {/* ── Step: Method ── */}
           {step === "method" && (
             <div className="space-y-4 mt-1">
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border border-border/40">
@@ -493,7 +493,7 @@ export default function WalletPage() {
             </div>
           )}
 
-          {/* â”€â”€ Step: M-Pesa phone â”€â”€ */}
+          {/* ── Step: M-Pesa phone ── */}
           {step === "mpesa-phone" && (
             <div className="space-y-4 mt-1">
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border border-border/40">
@@ -526,7 +526,7 @@ export default function WalletPage() {
             </div>
           )}
 
-          {/* â”€â”€ Step: M-Pesa pending â”€â”€ */}
+          {/* ── Step: M-Pesa pending ── */}
           {step === "mpesa-pending" && (
             <div className="space-y-4 mt-1 text-center">
               <div className="flex flex-col items-center gap-3 py-4">
@@ -551,7 +551,7 @@ export default function WalletPage() {
             </div>
           )}
 
-          {/* â”€â”€ Step: Card pending â”€â”€ */}
+          {/* ── Step: Card pending ── */}
           {step === "card-pending" && (
             <div className="flex flex-col items-center gap-4 py-8 text-center">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -559,7 +559,7 @@ export default function WalletPage() {
             </div>
           )}
 
-          {/* â”€â”€ Step: Done â”€â”€ */}
+          {/* ── Step: Done ── */}
           {step === "done" && (
             <div className="flex flex-col items-center gap-4 py-6 text-center">
               <div className="h-16 w-16 rounded-full bg-emerald-500/20 flex items-center justify-center">

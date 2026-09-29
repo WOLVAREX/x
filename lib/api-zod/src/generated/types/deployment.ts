@@ -5,6 +5,7 @@
  * JuneXDeployment API — Discord bot hosting platform
  * OpenAPI spec version: 0.1.0
  */
+import type { DeploymentEnvVars } from './deploymentEnvVars';
 import type { DeploymentStatus } from './deploymentStatus';
 
 export interface Deployment {
@@ -18,4 +19,7 @@ export interface Deployment {
   status: DeploymentStatus;
   createdAt: string;
   updatedAt?: string;
+  /** @nullable */
+  templateThumbnail?: string | null;
+  envVars?: DeploymentEnvVars;
 }

@@ -2,10 +2,21 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+const renderOrigin = process.env.RENDER_EXTERNAL_URL;
+const allowedOrigins = (process.env.FRONTEND_URL ?? renderOrigin ?? "http://localhost:5000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const publicDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../junex/dist/public",
+);
 
 app.use(
   pinoHttp({
@@ -26,10 +37,17 @@ app.use(
     },
   }),
 );
-app.use(cors());
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
+app.use(express.static(publicDir));
+app.get(/.*/, (_req, res, next) => {
+  res.sendFile(path.join(publicDir, "index.html"), (error) => {
+    if (error) next(error);
+  });
+});
 
 export default app;

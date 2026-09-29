@@ -1,4 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -67,7 +67,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* â”€â”€ LIGHT MODE: clean white + steel blue â”€â”€ */
+/* ── LIGHT MODE: clean white + steel blue ── */
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
@@ -147,7 +147,7 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
-/* â”€â”€ DARK MODE: deep black + faded blue â”€â”€ */
+/* ── DARK MODE: deep black + faded blue ── */
 .dark {
   --button-outline: rgba(255,255,255, .08);
   --badge-outline: rgba(255,255,255, .04);
@@ -177,7 +177,7 @@
   --popover-foreground: 214 20% 92%;
   --popover-border: 220 20% 14%;
 
-  /* Faded blue â€” muted, not neon */
+  /* Faded blue — muted, not neon */
   --primary: 213 65% 52%;
   --primary-foreground: 0 0% 100%;
 

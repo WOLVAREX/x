@@ -75,7 +75,7 @@ export default function MyBotsPage() {
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">My Bots</h1>
             <p className="text-muted-foreground mt-1 text-sm">
               {deployments?.length ?? 0} bot{(deployments?.length ?? 0) !== 1 ? "s" : ""} deployed
-              {onlineCount > 0 && ` â€” ${onlineCount} online`}
+              {onlineCount > 0 && ` — ${onlineCount} online`}
             </p>
           </div>
           <Button className="gap-2" asChild>

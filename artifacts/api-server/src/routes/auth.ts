@@ -45,18 +45,16 @@ const [user] = await db.insert(usersTable).values({
 
  
 
-  router.post("/auth/login", async (req, res): Promise<void> => {
-  console.log("LOGIN BODY:", JSON.stringify(req.body));
+router.post("/auth/login", async (req, res): Promise<void> => {
   const body = req.body.data ?? req.body;
   const { email, password } = body;
-  console.log("EMAIL:", email, "PASSWORD LENGTH:", password?.length);
    if (!email || !password) {
     res.status(400).json({ error: "Email and password are required" });
     return;
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
-  if (!user) {
+  if (!user?.passwordHash) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }

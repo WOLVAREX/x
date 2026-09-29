@@ -15,4 +15,9 @@ export interface TemplateUpdate {
   thumbnail?: string | null;
   category?: string;
   appJson?: TemplateUpdateAppJson;
+  isFree?: boolean;
+  price?: number;
+  currency?: string;
+  /** @nullable */
+  pairSiteUrl?: string | null;
 }
