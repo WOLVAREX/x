@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, DollarSign, Gift, Globe } from "lucide-react";
+import { Loader2, DollarSign, Gift, Globe, Star, Activity } from "lucide-react";
 
 const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 const CURRENCIES = ["KES", "USD", "NGN", "GHS", "UGX", "TZS", "ZAR"];
@@ -24,6 +24,8 @@ interface Template {
   price: number;
   currency: string;
   pairSiteUrl: string | null;
+  isFeatured: boolean;
+  showDeployCount: boolean;
 }
 
 interface Props {
@@ -45,6 +47,7 @@ export function AdminTemplateEditModal({ template, open, onOpenChange, onSaved }
     name: "", description: "", githubRepo: "", thumbnail: "",
     category: "", appJson: "{}", isFree: false,
     price: "0", currency: "KES", pairSiteUrl: "",
+    isFeatured: false, showDeployCount: true,
   });
 
   useEffect(() => {
@@ -60,6 +63,8 @@ export function AdminTemplateEditModal({ template, open, onOpenChange, onSaved }
         price: String((template.price ?? 0) / 100),
         currency: template.currency ?? "KES",
         pairSiteUrl: template.pairSiteUrl ?? "",
+        isFeatured: template.isFeatured ?? false,
+        showDeployCount: template.showDeployCount ?? true,
       });
     }
   }, [template]);
@@ -86,6 +91,8 @@ export function AdminTemplateEditModal({ template, open, onOpenChange, onSaved }
           price: form.isFree ? 0 : Math.round(parseFloat(form.price) * 100),
           currency: form.currency,
           pairSiteUrl: form.pairSiteUrl || null,
+          isFeatured: form.isFeatured,
+          showDeployCount: form.showDeployCount,
         }),
       });
       if (!res.ok) {
@@ -138,6 +145,18 @@ export function AdminTemplateEditModal({ template, open, onOpenChange, onSaved }
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" /> Pair Site URL</Label>
               <Input placeholder="https://..." value={form.pairSiteUrl} onChange={e => setForm({...form, pairSiteUrl: e.target.value})} />
+            </div>
+          </div>
+
+          {/* Discovery options */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 p-3">
+              <div className="flex items-center gap-2"><Star className="h-4 w-4 text-amber-400" /><div><Label>Feature this bot</Label><p className="text-xs text-muted-foreground">Pin it above other templates</p></div></div>
+              <Switch checked={form.isFeatured} onCheckedChange={isFeatured => setForm({ ...form, isFeatured })} />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 p-3">
+              <div className="flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /><div><Label>Show deploy count</Label><p className="text-xs text-muted-foreground">Display “7 Deploys” on the card</p></div></div>
+              <Switch checked={form.showDeployCount} onCheckedChange={showDeployCount => setForm({ ...form, showDeployCount })} />
             </div>
           </div>
 

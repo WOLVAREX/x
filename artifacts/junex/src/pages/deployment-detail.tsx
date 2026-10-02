@@ -356,7 +356,7 @@ export default function DeploymentDetail() {
           </div>
         )}
 
-        <Tabs defaultValue="logs">
+        <Tabs defaultValue={new URLSearchParams(window.location.search).get("tab") === "config" ? "config" : "logs"}>
           <div className="flex items-center justify-between">
             <TabsList>
               <TabsTrigger value="logs" className="gap-2">

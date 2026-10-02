@@ -5,7 +5,7 @@ import { useListTemplates, useListTemplateCategories } from "@workspace/api-clie
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Github, Bot, ExternalLink, Zap, Gift, Globe, Coins } from "lucide-react";
+import { Loader2, Search, Github, Bot, Zap, Gift, Globe, Coins, Star, Activity } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 
 export default function Templates() {
@@ -96,6 +96,10 @@ export default function Templates() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2">{template.description}</p>
+                  {(template.isFeatured || template.showDeployCount) && <div className="mt-3 flex flex-wrap gap-2">
+                    {template.isFeatured && <Badge className="gap-1 border-amber-500/20 bg-amber-500/10 text-amber-300"><Star className="h-3 w-3 fill-current" /> Featured on J.H.P</Badge>}
+                    {template.showDeployCount && <Badge variant="secondary" className="gap-1"><Activity className="h-3 w-3" />{template.deployCount ?? 0} Deploys</Badge>}
+                  </div>}
                 </div>
 
                 {/* Action buttons */}

@@ -12,6 +12,8 @@ export const templatesTable = pgTable("templates", {
   category: text("category").notNull(),
   appJson: jsonb("app_json").notNull(),
   isFree: boolean("is_free").notNull().default(false),
+  isFeatured: boolean("is_featured").notNull().default(false),
+  showDeployCount: boolean("show_deploy_count").notNull().default(true),
   price: integer("price").notNull().default(0),
   currency: text("currency").notNull().default("KES"),
   pairSiteUrl: text("pair_site_url"),

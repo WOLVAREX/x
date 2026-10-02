@@ -31,7 +31,7 @@ import {
   Plus, Github, ExternalLink, Bot, ShieldCheck, TrendingUp, Zap,
   Eye, Globe, AlertCircle, CheckCircle2, Clock, XCircle, UserCircle2,
   Pencil, Terminal, UserX, UserCheck, RefreshCw, Database,
-  Wifi, WifiOff, DollarSign, KeyRound, Coins, CreditCard,
+  Wifi, WifiOff, DollarSign, KeyRound, Coins, CreditCard, Star,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AdminTemplateEditModal } from "@/components/admin-template-edit-modal";
@@ -429,7 +429,7 @@ export default function AdminDashboard() {
                       const appJson = t.appJson as { env?: Record<string, unknown>; logo?: string };
                       const logo = t.thumbnail ?? appJson?.logo;
                       const envCount = Object.keys(appJson?.env ?? {}).length;
-                      const deployCount = deployments?.filter((d) => d.templateId === t.id).length ?? 0;
+                      const deployCount = t.deployCount ?? deployments?.filter((d) => d.templateId === t.id).length ?? 0;
                       return (
                         <Card key={t.id} className="group flex flex-col overflow-hidden border-border/40 hover:border-primary/40 hover:shadow-lg transition-all">
                           <div className="relative h-24 bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
@@ -446,7 +446,7 @@ export default function AdminDashboard() {
                             </Badge>
                           </div>
                           <CardHeader className="pb-2">
-                            <CardTitle className="text-base">{t.name}</CardTitle>
+                            <CardTitle className="flex items-center gap-2 text-base">{t.name}{t.isFeatured && <Badge className="gap-1 border-amber-500/20 bg-amber-500/10 px-1.5 text-[10px] text-amber-300"><Star className="h-3 w-3 fill-current" /> Featured</Badge>}</CardTitle>
                             <CardDescription className="text-xs line-clamp-2">{t.description}</CardDescription>
                           </CardHeader>
                           <CardContent className="flex-1 pb-3">

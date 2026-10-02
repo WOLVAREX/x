@@ -92,10 +92,13 @@ export const ListTemplatesResponseItem = zod.object({
 
 }).passthrough(),
   "isFree": zod.boolean(),
+  "isFeatured": zod.boolean(),
+  "showDeployCount": zod.boolean(),
   "price": zod.number(),
   "currency": zod.string(),
   "pairSiteUrl": zod.string().nullable(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "deployCount": zod.number().optional()
 })
 export const ListTemplatesResponse = zod.array(ListTemplatesResponseItem)
 
@@ -114,6 +117,8 @@ export const CreateTemplateBody = zod.object({
 
 }).passthrough(),
   "isFree": zod.boolean().optional(),
+  "isFeatured": zod.boolean().optional(),
+  "showDeployCount": zod.boolean().optional(),
   "price": zod.number().optional(),
   "currency": zod.string().optional(),
   "pairSiteUrl": zod.string().nullish()
@@ -146,10 +151,13 @@ export const GetTemplateResponse = zod.object({
 
 }).passthrough(),
   "isFree": zod.boolean(),
+  "isFeatured": zod.boolean(),
+  "showDeployCount": zod.boolean(),
   "price": zod.number(),
   "currency": zod.string(),
   "pairSiteUrl": zod.string().nullable(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "deployCount": zod.number().optional()
 })
 
 
@@ -170,6 +178,8 @@ export const UpdateTemplateBody = zod.object({
 
 }).passthrough().optional(),
   "isFree": zod.boolean().optional(),
+  "isFeatured": zod.boolean().optional(),
+  "showDeployCount": zod.boolean().optional(),
   "price": zod.number().optional(),
   "currency": zod.string().optional(),
   "pairSiteUrl": zod.string().nullish()
@@ -187,10 +197,13 @@ export const UpdateTemplateResponse = zod.object({
 
 }).passthrough(),
   "isFree": zod.boolean(),
+  "isFeatured": zod.boolean(),
+  "showDeployCount": zod.boolean(),
   "price": zod.number(),
   "currency": zod.string(),
   "pairSiteUrl": zod.string().nullable(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "deployCount": zod.number().optional()
 })
 
 
@@ -524,5 +537,3 @@ export const VerifyPaymentResponse = zod.object({
   "email": zod.string().optional(),
   "paidAt": zod.string().nullish()
 })
-
-

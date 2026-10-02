@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, templatesTable, deploymentsTable } from "@workspace/db";
-import { eq, ilike, and, or, sql } from "drizzle-orm";
+import { eq, ilike, and, or, sql, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -40,6 +40,8 @@ function formatTemplate(t: typeof templatesTable.$inferSelect, deployCount = 0) 
     category: t.category,
     appJson: t.appJson,
     isFree: t.isFree ?? false,
+    isFeatured: t.isFeatured ?? false,
+    showDeployCount: t.showDeployCount ?? true,
     price: t.price ?? 0,
     currency: t.currency ?? "KES",
     pairSiteUrl: t.pairSiteUrl ?? null,
@@ -55,7 +57,7 @@ router.get("/templates", async (req, res): Promise<void> => {
   if (search) conditions.push(or(ilike(templatesTable.name, `%${search}%`), ilike(templatesTable.description, `%${search}%`)));
   if (category) conditions.push(eq(templatesTable.category, category));
   if (conditions.length > 0) query = query.where(and(...conditions));
-  const templates = await query;
+  const templates = await query.orderBy(desc(templatesTable.isFeatured), desc(templatesTable.createdAt));
 
   const counts = await db
     .select({ templateId: deploymentsTable.templateId, count: sql<number>`count(*)::int` })
@@ -83,11 +85,12 @@ router.get("/templates/:idOrSlug", async (req, res): Promise<void> => {
     : await db.select().from(templatesTable).where(eq(templatesTable.slug, idOrSlug));
 
   if (!template) { res.status(404).json({ error: "Template not found" }); return; }
-  res.json(formatTemplate(template));
+  const [count] = await db.select({ count: sql<number>`count(*)::int` }).from(deploymentsTable).where(eq(deploymentsTable.templateId, template.id));
+  res.json(formatTemplate(template, count?.count ?? 0));
 });
 
 router.post("/templates", requireAdmin, async (req, res): Promise<void> => {
-  const { name, slug: rawSlug, description, githubRepo, thumbnail, category, appJson, isFree, price, currency, pairSiteUrl } = req.body;
+  const { name, slug: rawSlug, description, githubRepo, thumbnail, category, appJson, isFree, price, currency, pairSiteUrl, isFeatured, showDeployCount } = req.body;
   if (!name || !description || !githubRepo || !category || !appJson) {
     res.status(400).json({ error: "name, description, githubRepo, category and appJson are required" });
     return;
@@ -104,6 +107,8 @@ router.post("/templates", requireAdmin, async (req, res): Promise<void> => {
     price: isFree ? 0 : (price ?? 0),
     currency: currency ?? "KES",
     pairSiteUrl: pairSiteUrl ?? null,
+    ...(isFeatured !== undefined && { isFeatured }),
+    ...(showDeployCount !== undefined && { showDeployCount }),
   }).returning();
   res.status(201).json(formatTemplate(template));
 });
@@ -111,7 +116,7 @@ router.post("/templates", requireAdmin, async (req, res): Promise<void> => {
 router.patch("/templates/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { name, slug: rawSlug, description, githubRepo, thumbnail, category, appJson, isFree, price, currency, pairSiteUrl } = req.body;
+  const { name, slug: rawSlug, description, githubRepo, thumbnail, category, appJson, isFree, price, currency, pairSiteUrl, isFeatured, showDeployCount } = req.body;
 
   let slug: string | undefined;
   if (rawSlug) {
@@ -130,6 +135,8 @@ router.patch("/templates/:id", requireAdmin, async (req, res): Promise<void> => 
     ...(price !== undefined && { price: isFree ? 0 : price }),
     ...(currency && { currency }),
     ...(pairSiteUrl !== undefined && { pairSiteUrl }),
+    ...(isFeatured !== undefined && { isFeatured }),
+    ...(showDeployCount !== undefined && { showDeployCount }),
   }).where(eq(templatesTable.id, id)).returning();
   if (!template) { res.status(404).json({ error: "Template not found" }); return; }
   res.json(formatTemplate(template));

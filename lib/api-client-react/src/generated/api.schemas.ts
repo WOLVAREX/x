@@ -64,11 +64,14 @@ export interface Template {
   category: string;
   appJson: TemplateAppJson;
   isFree: boolean;
+  isFeatured: boolean;
+  showDeployCount: boolean;
   price: number;
   currency: string;
   /** @nullable */
   pairSiteUrl: string | null;
   createdAt: string;
+  deployCount?: number;
 }
 
 export type TemplateInputAppJson = { [key: string]: unknown };
@@ -83,6 +86,8 @@ export interface TemplateInput {
   category: string;
   appJson: TemplateInputAppJson;
   isFree?: boolean;
+  isFeatured?: boolean;
+  showDeployCount?: boolean;
   price?: number;
   currency?: string;
   /** @nullable */
@@ -100,6 +105,8 @@ export interface TemplateUpdate {
   category?: string;
   appJson?: TemplateUpdateAppJson;
   isFree?: boolean;
+  isFeatured?: boolean;
+  showDeployCount?: boolean;
   price?: number;
   currency?: string;
   /** @nullable */
@@ -228,4 +235,3 @@ export type ListTemplatesParams = {
 category?: string;
 search?: string;
 };
-

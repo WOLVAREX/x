@@ -18,9 +18,12 @@ export interface Template {
   category: string;
   appJson: TemplateAppJson;
   isFree: boolean;
+  isFeatured: boolean;
+  showDeployCount: boolean;
   price: number;
   currency: string;
   /** @nullable */
   pairSiteUrl: string | null;
   createdAt: string;
+  deployCount?: number;
 }

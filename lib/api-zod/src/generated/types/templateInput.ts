@@ -17,6 +17,8 @@ export interface TemplateInput {
   category: string;
   appJson: TemplateInputAppJson;
   isFree?: boolean;
+  isFeatured?: boolean;
+  showDeployCount?: boolean;
   price?: number;
   currency?: string;
   /** @nullable */

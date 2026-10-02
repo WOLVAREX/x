@@ -11,12 +11,13 @@ import { format } from "date-fns";
 import {
   Loader2, Search, Bot, Play, Square, RotateCcw,
   Terminal, ExternalLink, Trash2, Plus, AlertCircle, Copy, Coins,
-  CheckCircle2, Clock, XCircle,
+  CheckCircle2, Clock, XCircle, MoreHorizontal, Pencil,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
-  AlertDialogTitle, AlertDialogTrigger,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
   useListDeployments, useStartDeployment, useStopDeployment,
@@ -47,6 +48,7 @@ export default function MyBotsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; botName: string } | null>(null);
 
   const { data: deployments, isLoading, isError, error, refetch } = useListDeployments({
     query: { queryKey: getListDeploymentsQueryKey(), refetchInterval: (query) => query.state.data?.some((bot) => bot.status === "building" || bot.status === "queued") ? 5_000 : false },
@@ -178,58 +180,48 @@ export default function MyBotsPage() {
                   {(() => { const meta = dep as typeof dep & { daysLeft?: number | null; expiresAt?: string | null }; return meta.expiresAt ? <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Coins className="h-3 w-3 text-primary" />{meta.daysLeft === 0 ? "Plan expired" : `${meta.daysLeft} day${meta.daysLeft === 1 ? "" : "s"} left`}</div> : null; })()}
 
                   {/* Actions */}
-                  <div className="flex gap-2 mt-auto pt-3 border-t border-border/40">
-                    {dep.status === "offline" || dep.status === "error" ? (
-                      <Button size="sm" variant="outline"
-                        className="flex-1 gap-1.5 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30"
-                        disabled={startMutation.isPending}
-                        onClick={() => startMutation.mutate({ id: dep.id })}>
-                        <Play className="h-3.5 w-3.5" /> Start
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline"
-                        className="flex-1 gap-1.5 text-red-400 hover:bg-red-500/10 hover:border-red-500/30"
-                        disabled={stopMutation.isPending || dep.status !== "online"}
-                        onClick={() => stopMutation.mutate({ id: dep.id })}>
-                        <Square className="h-3.5 w-3.5" /> Stop
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline" className="gap-1.5"
-                      disabled={restartMutation.isPending || dep.status !== "online"}
-                      onClick={() => restartMutation.mutate({ id: dep.id })}>
-                      <RotateCcw className="h-3.5 w-3.5" />
+                  <div className="mt-auto flex gap-2 border-t border-border/40 pt-3">
+                    <Button size="sm" variant="outline" className="flex-1 gap-1.5" asChild>
+                      <Link href={`/deployments/${dep.id}?tab=config`}><Pencil className="h-3.5 w-3.5" /> Edit</Link>
                     </Button>
-                    <Button size="sm" variant="secondary" className="gap-1.5" asChild>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="outline" className="flex-1 gap-1.5"><MoreHorizontal className="h-4 w-4" /> More</Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        {dep.status === "offline" || dep.status === "error" ? (
+                          <DropdownMenuItem disabled={startMutation.isPending} onSelect={() => startMutation.mutate({ id: dep.id })}><Play /> Start bot</DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem disabled={stopMutation.isPending || dep.status !== "online"} onSelect={() => stopMutation.mutate({ id: dep.id })}><Square /> Stop bot</DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem disabled={restartMutation.isPending || dep.status !== "online"} onSelect={() => restartMutation.mutate({ id: dep.id })}><RotateCcw /> Restart bot</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget({ id: dep.id, botName: dep.botName })}><Trash2 /> Delete app</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button size="sm" variant="secondary" className="flex-1 gap-1.5" asChild>
                       <Link href={`/deployments/${dep.id}`}><Terminal className="h-3.5 w-3.5" /> Logs</Link>
                     </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 px-2">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete {dep.botName}?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This deletes the bot’s Heroku app to stop using resources, then keeps its name and configuration on your J.H.P account for recovery.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction className="bg-destructive text-destructive-foreground"
-                            onClick={() => deleteMutation.mutate({ id: dep.id })}>
-                            Delete app & keep recovery data
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
+        <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {deleteTarget?.botName}?</AlertDialogTitle>
+              <AlertDialogDescription>This removes the Heroku app and stops its resource usage, then keeps the bot name and configuration on your J.H.P account for recovery.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction className="bg-destructive text-destructive-foreground" disabled={deleteMutation.isPending} onClick={() => { if (deleteTarget) deleteMutation.mutate({ id: deleteTarget.id }); }}>
+                {deleteMutation.isPending ? "Deleting…" : "Delete app & keep recovery data"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Layout>
   );

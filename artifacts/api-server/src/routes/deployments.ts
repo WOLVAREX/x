@@ -565,6 +565,19 @@ async function findArchivedBot(userId: number, appName: string, botName: string)
   return byBotName;
 }
 
+async function findActiveBot(userId: number, appName: string, botName: string) {
+  const scope = and(eq(deploymentsTable.userId, userId), isNull(deploymentsTable.archivedAt));
+  const [byAppName] = await db.select({ id: deploymentsTable.id })
+    .from(deploymentsTable).where(and(scope, eq(deploymentsTable.herokuAppId, appName)));
+  if (byAppName) return byAppName;
+  const normalizedBotName = botName.trim().toLowerCase();
+  if (!normalizedBotName) return undefined;
+  const [byBotName] = await db.select({ id: deploymentsTable.id })
+    .from(deploymentsTable).where(and(scope, sql`lower(trim(${deploymentsTable.botName})) = ${normalizedBotName}`))
+    .orderBy(sql`${deploymentsTable.createdAt} DESC`).limit(1);
+  return byBotName;
+}
+
 router.get("/recovery/options", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const rows = await db.select({ id: deploymentsTable.id, botName: deploymentsTable.botName, templateName: templatesTable.name })
@@ -589,7 +602,12 @@ router.get("/recovery/lookup", requireAuth, async (req, res): Promise<void> => {
   const appName = normalizeAppName(identifier);
   if (!identifier) { res.status(400).json({ error: "Enter the bot name or app name" }); return; }
   const row = await findArchivedBot(user.id, appName, identifier);
-  if (!row) { res.status(404).json({ error: "No archived bot with that name was found on your account" }); return; }
+  if (!row) {
+    const active = await findActiveBot(user.id, appName, identifier);
+    if (active) { res.status(409).json({ error: "This bot is still deployed. Delete it from My Bots first, then enter its bot name here to recover it." }); return; }
+    res.status(404).json({ error: "No bot with that name was found on your account" });
+    return;
+  }
   const fields = (row.template.appJson as any)?.env ?? {};
   const [sources] = await Promise.all([db.select({ id: deploymentsTable.id, botName: deploymentsTable.botName, envVars: deploymentsTable.envVars })
     .from(deploymentsTable).where(and(eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)))]);

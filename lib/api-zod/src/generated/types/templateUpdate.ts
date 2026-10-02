@@ -16,6 +16,8 @@ export interface TemplateUpdate {
   category?: string;
   appJson?: TemplateUpdateAppJson;
   isFree?: boolean;
+  isFeatured?: boolean;
+  showDeployCount?: boolean;
   price?: number;
   currency?: string;
   /** @nullable */

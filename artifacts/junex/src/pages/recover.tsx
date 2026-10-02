@@ -37,14 +37,17 @@ export default function RecoverPage() {
     try {
       const response = await fetch(`${API_BASE}/api/recovery/lookup?appName=${encodeURIComponent(appName)}`, { headers: authHeaders() });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Could not find that bot");
+      if (!response.ok) {
+        toast({ title: response.status === 409 ? "Delete the bot first" : "Bot not found", description: data.error ?? "Check the bot name and try again.", variant: "destructive" });
+        return;
+      }
       setRecovery(data); setEnvVars(data.envVars ?? {});
       if (data.daysLeft <= 0) {
         const plansResponse = await fetch(`${API_BASE}/api/plans`);
         const plansData = await plansResponse.json();
         setPlans(plansData.plans ?? []); setPlanId(plansData.plans?.[0]?.id ?? "");
       }
-    } catch (error) { toast({ title: "Bot not found", description: error instanceof Error ? error.message : "Check the app name and try again.", variant: "destructive" }); }
+    } catch (error) { toast({ title: "Bot lookup failed", description: error instanceof Error ? error.message : "Check the bot name and try again.", variant: "destructive" }); }
     finally { setIsLookingUp(false); }
   }
 

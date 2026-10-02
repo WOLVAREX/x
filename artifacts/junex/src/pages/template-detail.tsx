@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useQuery } from "@tanstack/react-query";
 import type { Template } from "@workspace/api-client-react";
 import {
-  Loader2, Github, ArrowLeft, Bot, Users, Zap, KeyRound, Gift, Coins, ChevronDown,
+  Loader2, Github, ArrowLeft, Bot, Zap, KeyRound, Gift, Coins, ChevronDown, Star, Activity,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -208,11 +208,8 @@ export default function TemplateDetail() {
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold">{template.name}</h1>
               <Badge variant="secondary">{template.category}</Badge>
-              {(template.deployCount ?? 0) > 0 && (
-                <Badge variant="outline" className="gap-1 text-xs">
-                  <Users className="h-3 w-3" /> {template.deployCount} deployed
-                </Badge>
-              )}
+              {template.isFeatured && <Badge className="gap-1 border-amber-500/20 bg-amber-500/10 text-amber-300"><Star className="h-3 w-3 fill-current" /> Featured on J.H.P</Badge>}
+              {template.showDeployCount && <Badge variant="outline" className="gap-1 text-xs"><Activity className="h-3 w-3" /> {template.deployCount ?? 0} Deploys</Badge>}
               {template.isFree && <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/20 gap-1"><Gift className="h-3 w-3" /> Free template</Badge>}
               <Badge variant="outline" className="gap-1"><Coins className="h-3 w-3" /> Hosting plan required</Badge>
             </div>

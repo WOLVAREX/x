@@ -19,6 +19,7 @@ function formatTemplate(t: typeof templatesTable.$inferSelect) {
     githubRepo: t.githubRepo, thumbnail: t.thumbnail ?? null,
     category: t.category, appJson: t.appJson,
     isFree: t.isFree ?? false, price: t.price ?? 0,
+    isFeatured: t.isFeatured ?? false, showDeployCount: t.showDeployCount ?? true,
     currency: t.currency ?? "KES", pairSiteUrl: t.pairSiteUrl ?? null,
     createdAt: t.createdAt,
   };
@@ -314,7 +315,7 @@ router.get("/admin/health", requireAdmin, async (_req, res): Promise<void> => {
 router.patch("/admin/templates/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { name, description, githubRepo, thumbnail, category, appJson, isFree, price, currency, pairSiteUrl } = req.body;
+  const { name, description, githubRepo, thumbnail, category, appJson, isFree, price, currency, pairSiteUrl, isFeatured, showDeployCount } = req.body;
   const [template] = await db.update(templatesTable).set({
     ...(name !== undefined && { name }),
     ...(description !== undefined && { description }),
@@ -326,6 +327,8 @@ router.patch("/admin/templates/:id", requireAdmin, async (req, res): Promise<voi
     ...(price !== undefined && { price: isFree ? 0 : price }),
     ...(currency !== undefined && { currency }),
     ...(pairSiteUrl !== undefined && { pairSiteUrl }),
+    ...(isFeatured !== undefined && { isFeatured }),
+    ...(showDeployCount !== undefined && { showDeployCount }),
   }).where(eq(templatesTable.id, id)).returning();
   if (!template) { res.status(404).json({ error: "Template not found" }); return; }
   res.json(formatTemplate(template));
