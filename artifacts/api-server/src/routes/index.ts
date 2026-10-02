@@ -9,6 +9,7 @@ import dashboardRouter from "./dashboard";
 import adminRouter from "./admin";
 import paymentsRouter from "./payments";
 import walletRouter from "./wallet";
+import teamRouter from "./team";
 
 const router: IRouter = Router();
 
@@ -20,6 +21,7 @@ router.use(templatesRouter);
 router.use(deploymentsRouter);
 router.use(dashboardRouter);
 router.use(adminRouter);
+router.use(teamRouter);
 router.use(paymentsRouter);
 router.use(walletRouter);
 

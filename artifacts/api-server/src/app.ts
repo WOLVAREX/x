@@ -38,11 +38,13 @@ app.use(
   }),
 );
 app.use(cors({ origin: allowedOrigins }));
-app.use(express.json());
+app.use(express.json({ limit: "3mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
+const teamUploadsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../junex/uploads/team");
+app.use("/uploads/team", express.static(teamUploadsDir, { fallthrough: false, immutable: true, maxAge: "1y" }));
 app.use(express.static(publicDir));
 app.get(/.*/, (_req, res, next) => {
   res.sendFile(path.join(publicDir, "index.html"), (error) => {
