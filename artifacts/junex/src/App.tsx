@@ -23,6 +23,7 @@ import MyBotsPage from "@/pages/my-bots";
 import DocsPage from "@/pages/docs";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
+import DevelopersPage from "@/pages/developers";
 
 // API calls use relative paths proxied to the backend by Vite in dev,
 // and served from the same origin in production.
@@ -41,6 +42,7 @@ function Router() {
       <Route path="/docs" component={DocsPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
+      <Route path="/developers" component={DevelopersPage} />
 
       {/* Protected user routes */}
       <Route path="/dashboard">
