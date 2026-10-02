@@ -17,7 +17,7 @@ import {
 import { ProtectedRoute } from "@/components/protected-route";
 import {
   Loader2, Server, AlertCircle, Terminal, Play, Square,
-  RotateCcw, Plus, CheckCircle2, XCircle, Clock, Wallet,
+  RotateCcw, Plus, CheckCircle2, XCircle, Clock, Wallet, Coins,
   ArrowRight, Bot, Activity, Zap, TrendingUp, Copy,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -28,10 +28,6 @@ const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 function authHeader() {
   const token = localStorage.getItem("JuneXHostingPlatform_token");
   return { Authorization: `Bearer ${token}` };
-}
-
-function fmt(amount: number, currency = "KES") {
-  return `${currency} ${(amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 }
 
 function getGreeting() {
@@ -75,12 +71,11 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [walletCurrency, setWalletCurrency] = useState("KES");
 
   useEffect(() => {
     fetch(`${API_BASE}/api/wallet`, { headers: authHeader() })
       .then(r => r.json())
-      .then(d => { setWalletBalance(d.balance ?? 0); setWalletCurrency(d.currency ?? "KES"); })
+      .then(d => { setWalletBalance(d.balance ?? 0); })
       .catch(() => setWalletBalance(0));
   }, []);
 
@@ -122,8 +117,8 @@ export default function Dashboard() {
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button variant="outline" size="sm" className="gap-2" asChild>
                   <Link href="/wallet">
-                    <Wallet className="h-4 w-4" />
-                    {walletBalance !== null ? fmt(walletBalance, walletCurrency) : "Wallet"}
+                    <Coins className="h-4 w-4" />
+                    {walletBalance !== null ? `${walletBalance.toLocaleString()} coins` : "Wallet"}
                   </Link>
                 </Button>
                 <Button size="sm" className="gap-2" asChild>
@@ -195,9 +190,9 @@ export default function Dashboard() {
                       <Wallet className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Wallet Balance</p>
+                      <p className="text-xs text-muted-foreground">Coin Balance</p>
                       <p className="text-xl font-bold text-primary">
-                        {walletBalance !== null ? fmt(walletBalance, walletCurrency) : <Loader2 className="h-4 w-4 animate-spin inline" />}
+                        {walletBalance !== null ? `${walletBalance.toLocaleString()} coins` : <Loader2 className="h-4 w-4 animate-spin inline" />}
                       </p>
                     </div>
                   </div>

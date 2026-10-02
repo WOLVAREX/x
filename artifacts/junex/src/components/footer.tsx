@@ -15,7 +15,7 @@ export function Footer() {
               <span className="font-bold text-sm">J.H.P</span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              J.H.P — deploy and manage your bots with ease.
+              J.H.P is a collaboration between June X Supreme and WOLVAREX Silent Wolf.
             </p>
           </div>
 
@@ -77,7 +77,7 @@ export function Footer() {
 
         <div className="border-t border-border/40 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            &copy; {year} WOLF TECH. All rights reserved.
+            &copy; {year} J.H.P · Created by June X Supreme and WOLVAREX Silent Wolf.
           </p>
           <div className="flex items-center gap-4">
             <Link href="/privacy" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</Link>
