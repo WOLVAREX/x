@@ -34,9 +34,9 @@ export default function DevelopersPage() {
     <Layout>
       <main className="container mx-auto max-w-6xl px-4 py-12 sm:py-16">
         <header className="mx-auto mb-10 max-w-2xl text-center sm:mb-14">
-          <Badge variant="outline" className="mb-4 gap-2 px-3 py-1.5"><Users className="h-3.5 w-3.5 text-primary" /> WOLF TECH · JuneX Hosting Platform</Badge>
+          <Badge variant="outline" className="mb-4 gap-2 px-3 py-1.5"><Users className="h-3.5 w-3.5 text-primary" /> WOLF TECH · J.H.P</Badge>
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Meet the team</h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">The people who created and build the JuneX Hosting Platform.</p>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">The people who created and build J.H.P.</p>
         </header>
 
         {isLoading ? (
@@ -44,7 +44,7 @@ export default function DevelopersPage() {
         ) : isError ? (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-8 text-center text-sm text-destructive">We could not load the team right now. Please try again later.</div>
         ) : members.length ? (
-          <section aria-label="JuneX project creators" className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <section aria-label="J.H.P project creators" className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {members.map((member) => (
               <Card key={member.id} className="h-full overflow-hidden border-border/60 transition-colors hover:border-primary/30">
                 <CardContent className="flex h-full flex-col items-center p-6 text-center sm:p-7">
@@ -64,7 +64,7 @@ export default function DevelopersPage() {
           <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-border bg-card/50 px-6 py-12 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10"><Users className="h-6 w-6 text-primary" /></div>
             <h2 className="mt-4 font-semibold">Team profiles are coming soon</h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">We’re preparing the profiles of the people behind JuneX Hosting Platform.</p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">We’re preparing the profiles of the people behind J.H.P.</p>
           </div>
         )}
       </main>

@@ -116,7 +116,7 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground mt-2">
                   {summary?.totalDeployments
                     ? `You have ${summary.totalDeployments} bot${summary.totalDeployments !== 1 ? "s" : ""} deployed — ${summary.onlineCount} online`
-                    : "Welcome to JXHP. Deploy your first bot to get started."}
+                    : "Welcome to J.H.P. Deploy your first bot to get started."}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
@@ -216,9 +216,9 @@ export default function Dashboard() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold">Your Bots</h2>
-                  {summary.recentDeployments.length > 0 && (
+                  {summary.totalDeployments > 3 && (
                     <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" asChild>
-                      <Link href="/templates"><Plus className="h-3.5 w-3.5" /> Add more</Link>
+                      <Link href="/my-bots">More bots <ArrowRight className="h-3.5 w-3.5" /></Link>
                     </Button>
                   )}
                 </div>
@@ -240,7 +240,7 @@ export default function Dashboard() {
                   </Card>
                 ) : (
                   <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                    {summary.recentDeployments.map((deployment) => (
+                    {summary.recentDeployments.slice(0, 3).map((deployment) => (
                       <Card
                         key={deployment.id}
                         className="flex flex-col border-border/40 hover:border-primary/25 transition-all hover:shadow-md group"
@@ -248,8 +248,9 @@ export default function Dashboard() {
                         <CardHeader className="pb-3 p-5">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/15 transition-colors">
-                                <Bot className="h-4 w-4 text-primary" />
+                              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden border border-border/30 group-hover:bg-primary/15 transition-colors">
+                                {deployment.templateThumbnail ? <img src={deployment.templateThumbnail} alt={deployment.templateName} className="h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = "none"; const fallback = event.currentTarget.nextElementSibling as HTMLElement | null; if (fallback) fallback.style.removeProperty("display"); }} /> : null}
+                                <Bot className="h-4 w-4 text-primary" style={{ display: deployment.templateThumbnail ? "none" : undefined }} />
                               </div>
                               <div className="min-w-0">
                                 <CardTitle className="text-sm leading-snug">

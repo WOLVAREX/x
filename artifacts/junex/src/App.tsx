@@ -26,6 +26,7 @@ import TermsPage from "@/pages/terms";
 import DevelopersPage from "@/pages/developers";
 import RecoverPage from "@/pages/recover";
 import AdminPlansPage from "@/pages/admin-plans";
+import IntegrationPage from "@/pages/integration";
 
 // API calls use relative paths proxied to the backend by Vite in dev,
 // and served from the same origin in production.
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/register" component={Register} />
       <Route path="/oauth-callback" component={OAuthCallback} />
       <Route path="/docs" component={DocsPage} />
+      <Route path="/integration" component={IntegrationPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/developers" component={DevelopersPage} />

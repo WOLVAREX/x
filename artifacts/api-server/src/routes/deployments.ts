@@ -116,6 +116,10 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       }
     }
 
+    // Stable platform metadata lets templates display J.H.P as their host brand.
+    configVars.JHP_PLATFORM = "J.H.P";
+    configVars.JHP_PLATFORM_URL = "https://host.junex.space";
+
     if (Object.keys(configVars).length > 0) {
       const configRes = await fetch(`${HEROKU_BASE}/apps/${appName}/config-vars`, {
         method: "PATCH",

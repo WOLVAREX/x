@@ -163,7 +163,7 @@ export default function DeploymentDetail() {
   const deleteMutation = useDeleteDeployment({
     mutation: {
       onSuccess: () => {
-        toast({ title: "Bot deleted from JXHP and Heroku" });
+        toast({ title: "Bot deleted from J.H.P" });
         setLocation("/my-bots");
       },
     },
@@ -344,7 +344,7 @@ export default function DeploymentDetail() {
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10"><Terminal className="h-4 w-4 text-primary" /></div>
                 <div className="min-w-0 flex-1">
                   <CardTitle className="text-sm font-medium">Deployment activity</CardTitle>
-                  <CardDescription className="mt-0.5 text-xs">JuneX setup events and live Heroku runtime output</CardDescription>
+                  <CardDescription className="mt-0.5 text-xs">J.H.P deployment events and live bot runtime output</CardDescription>
                 </div>
                 {isBuilding && (
                   <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[11px] text-blue-300">
@@ -450,7 +450,7 @@ export default function DeploymentDetail() {
             <Card className="border-destructive/30">
               <CardHeader>
                 <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
-                <CardDescription>Permanently deletes this bot from JXHP and Heroku. Cannot be undone.</CardDescription>
+                <CardDescription>Permanently deletes this bot from J.H.P and removes its hosting app. Cannot be undone.</CardDescription>
               </CardHeader>
               <CardContent>
                 <AlertDialog>
@@ -463,7 +463,7 @@ export default function DeploymentDetail() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Delete {deployment.botName}?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This permanently deletes the bot from JXHP and removes the Heroku app. Cannot be undone.
+                        This permanently deletes the bot from J.H.P and removes its hosting app. Cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

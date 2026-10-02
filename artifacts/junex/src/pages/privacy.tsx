@@ -21,7 +21,7 @@ export default function PrivacyPage() {
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">1. Information We Collect</h2>
-            <p>When you create an account on JuneX Hosting Platform (JXHP), we collect the following information:</p>
+            <p>When you create an account on J.H.P, we collect the following information:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>Your name, email address, and username</li>
               <li>OAuth profile data if you sign in with Google or GitHub (name, email, profile photo)</li>
@@ -52,7 +52,7 @@ export default function PrivacyPage() {
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">4. Third-Party Services</h2>
-            <p>JXHP integrates with the following third-party services:</p>
+            <p>J.H.P integrates with the following third-party services:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li><strong className="text-foreground">Heroku</strong> — Bot hosting and deployment</li>
               <li><strong className="text-foreground">Paystack</strong> — Payment processing</li>
@@ -82,12 +82,12 @@ export default function PrivacyPage() {
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">7. Cookies</h2>
-            <p>JXHP uses minimal cookies and local storage for authentication tokens. We do not use tracking cookies or advertising cookies.</p>
+            <p>J.H.P uses minimal cookies and local storage for authentication tokens. We do not use tracking cookies or advertising cookies.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">8. Changes to This Policy</h2>
-            <p>We may update this Privacy Policy from time to time. We will notify you of significant changes via email or a notice on the platform. Continued use of JXHP after changes constitutes acceptance of the updated policy.</p>
+            <p>We may update this Privacy Policy from time to time. We will notify you of significant changes via email or a notice on the platform. Continued use of J.H.P after changes constitutes acceptance of the updated policy.</p>
           </section>
 
           <section>

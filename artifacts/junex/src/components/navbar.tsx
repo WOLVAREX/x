@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
 import {
-  Moon, Sun, Terminal, Menu, X,
+  Moon, Sun, Terminal, Menu, X, Code2,
   LayoutDashboard, Grid3X3, ShieldCheck, LifeBuoy,
   LogOut, LogIn, UserPlus, Wallet, Bot,
 } from "lucide-react";
@@ -22,6 +22,7 @@ export function Navbar() {
       { href: "/recover", label: "Recover", icon: LifeBuoy },
     ] : []),
     { href: "/templates", label: "Templates", icon: Grid3X3 },
+    { href: "/integration", label: "Integration", icon: Code2 },
     ...(user ? [{ href: "/wallet", label: "Payments", icon: Wallet }] : []),
     ...(user?.role === "admin" ? [{ href: "/admin", label: "Admin", icon: ShieldCheck }] : []),
   ];
@@ -36,7 +37,7 @@ export function Navbar() {
         <div className="container flex h-16 max-w-screen-2xl items-center px-4 md:px-8">
           <Link href="/" className="mr-6 flex items-center space-x-2 flex-shrink-0" onClick={() => setMobileOpen(false)}>
             <Terminal className="h-5 w-5 text-primary" />
-            <span className="font-bold text-sm sm:text-base">JXHP</span>
+            <span className="font-bold text-sm sm:text-base">J.H.P</span>
           </Link>
           <div className="hidden md:flex flex-1 items-center gap-1">
             {navLinks.map((link) => (

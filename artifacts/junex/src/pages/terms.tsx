@@ -21,12 +21,12 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">1. Acceptance of Terms</h2>
-            <p>By creating an account on JuneX Hosting Platform (JXHP), you agree to be bound by these Terms of Service. If you do not agree, do not use the platform.</p>
+            <p>By creating an account on J.H.P, you agree to be bound by these Terms of Service. If you do not agree, do not use the platform.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">2. Eligibility</h2>
-            <p>You must be at least 18 years old to use JXHP. By using the platform, you confirm that you meet this requirement and have the legal capacity to enter into this agreement.</p>
+            <p>You must be at least 18 years old to use J.H.P. By using the platform, you confirm that you meet this requirement and have the legal capacity to enter into this agreement.</p>
           </section>
 
           <section>
@@ -42,7 +42,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">4. Acceptable Use</h2>
-            <p>You agree NOT to use JXHP to deploy bots that:</p>
+            <p>You agree NOT to use J.H.P to deploy bots that:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>Send spam or unsolicited messages</li>
               <li>Violate any third-party platform terms of service (WhatsApp, Discord, etc.)</li>
@@ -52,33 +52,33 @@ export default function TermsPage() {
               <li>Mine cryptocurrency or conduct resource-intensive unauthorized activities</li>
               <li>Infringe intellectual property rights</li>
             </ul>
-            <p className="mt-2">JXHP reserves the right to suspend or terminate any account that violates these terms without prior notice.</p>
+            <p className="mt-2">J.H.P reserves the right to suspend or terminate any account that violates these terms without prior notice.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">5. Payments and Refunds</h2>
-            <p>JXHP operates on a pre-paid wallet model. All wallet deposits are final and non-refundable unless required by law. Template deployment fees are charged from your wallet balance and are non-refundable once a deployment has been initiated.</p>
+            <p>J.H.P operates on a pre-paid wallet model. All wallet deposits are final and non-refundable unless required by law. Template deployment fees are charged from your wallet balance and are non-refundable once a deployment has been initiated.</p>
             <p className="mt-2">We are not responsible for payment failures caused by your bank or payment provider.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">6. Service Availability</h2>
-            <p>JXHP aims for maximum uptime but does not guarantee uninterrupted service. We may perform maintenance, updates, or experience downtime due to factors outside our control including Heroku infrastructure issues. We are not liable for losses caused by service interruptions.</p>
+            <p>J.H.P aims for maximum uptime but does not guarantee uninterrupted service. We may perform maintenance, updates, or experience downtime due to factors outside our control including hosting infrastructure issues. We are not liable for losses caused by service interruptions.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">7. Heroku Dependency</h2>
-            <p>Your bots are hosted on Heroku. JXHP acts as an intermediary and is subject to Heroku's own terms of service and policies. Changes to Heroku's pricing, availability, or policies may affect your deployments. We will make reasonable efforts to notify you of significant changes.</p>
+            <p>Your bots run on infrastructure managed through J.H.P. Changes to our hosting provider's pricing, availability, or policies may affect your deployments. We will make reasonable efforts to notify you of significant changes.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">8. Intellectual Property</h2>
-            <p>Bot templates available on JXHP are provided by their respective creators and are subject to their own licenses. JXHP does not claim ownership of templates. The JXHP platform, branding, and code are the intellectual property of WOLF TECH.</p>
+            <p>Bot templates available on J.H.P are provided by their respective creators and are subject to their own licenses. J.H.P does not claim ownership of templates. The J.H.P platform, branding, and code are the intellectual property of WOLF TECH.</p>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">9. Limitation of Liability</h2>
-            <p>To the maximum extent permitted by law, JXHP and WOLF TECH shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the platform, including but not limited to loss of data, revenue, or profits.</p>
+            <p>To the maximum extent permitted by law, J.H.P and WOLF TECH shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the platform, including but not limited to loss of data, revenue, or profits.</p>
           </section>
 
           <section>
@@ -88,7 +88,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-base font-semibold text-foreground mb-3">11. Changes to Terms</h2>
-            <p>We may update these Terms of Service at any time. Continued use of JXHP after changes take effect constitutes acceptance of the new terms. We will notify you of significant changes via email.</p>
+            <p>We may update these Terms of Service at any time. Continued use of J.H.P after changes take effect constitutes acceptance of the new terms. We will notify you of significant changes via email.</p>
           </section>
 
           <section>

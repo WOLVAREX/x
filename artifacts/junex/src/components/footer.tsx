@@ -12,10 +12,10 @@ export function Footer() {
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-3">
               <Terminal className="h-4 w-4 text-primary" />
-              <span className="font-bold text-sm">JXHP</span>
+              <span className="font-bold text-sm">J.H.P</span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              JuneX Hosting Platform. Deploy and manage your bots with ease.
+              J.H.P — deploy and manage your bots with ease.
             </p>
           </div>
 
@@ -26,6 +26,7 @@ export function Footer() {
               {[
                 { href: "/templates", label: "Templates" },
                 { href: "/docs", label: "Documentation" },
+                { href: "/integration", label: "Integration" },
               ].map((l) => (
                 <li key={l.href}>
                   <Link href={l.href} className="text-xs text-muted-foreground hover:text-foreground transition-colors">

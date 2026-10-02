@@ -212,7 +212,7 @@ export default function MyBotsPage() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete {dep.botName}?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This archives the bot in JuneX, stops and removes its Heroku app, and keeps its app name and configuration available for recovery.
+                            This archives the bot in J.H.P, stops and removes its hosting app, and keeps its app name and configuration available for recovery.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>

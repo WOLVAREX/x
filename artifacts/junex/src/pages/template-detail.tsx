@@ -74,7 +74,7 @@ export default function TemplateDetail() {
   useEffect(() => {
     if (!template) return;
     const url = window.location.href;
-    document.title = `${template.name} — JXHP`;
+    document.title = `${template.name} — J.H.P`;
     setMeta("og:title", template.name);
     setMeta("og:description", template.description);
     setMeta("og:url", url);
@@ -88,7 +88,7 @@ export default function TemplateDetail() {
 
     return () => {
       // Restore defaults when navigating away
-      document.title = "JXHP";
+      document.title = "J.H.P";
       ["og:title","og:description","og:url","og:type","og:image",
        "twitter:card","twitter:title","twitter:description","twitter:image","description"]
         .forEach(removeMeta);

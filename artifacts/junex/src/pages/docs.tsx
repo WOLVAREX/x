@@ -13,8 +13,8 @@ const sections = [
     icon: Zap,
     content: [
       {
-        heading: "What is JXHP?",
-        body: "JuneX Hosting Platform (JXHP) is a managed bot deployment platform. It lets you deploy, manage, and scale WhatsApp and Discord bots on Heroku without touching any infrastructure directly.",
+        heading: "What is J.H.P?",
+        body: "J.H.P is a managed bot deployment platform. It lets you deploy, manage, and scale WhatsApp and Discord bots without managing the hosting account directly.",
       },
       {
         heading: "Create an Account",
@@ -56,7 +56,7 @@ const sections = [
       },
       {
         heading: "Viewing Logs",
-        body: "Click the Logs button on any bot card or go to the deployment detail page. Logs show both the JXHP deployment history and live Heroku logs so you can debug issues.",
+        body: "Click the Logs button on any bot card or go to the deployment detail page. Logs show both J.H.P deployment history and live bot logs so you can debug issues.",
       },
       {
         heading: "Editing Configuration",
@@ -64,7 +64,7 @@ const sections = [
       },
       {
         heading: "Deleting a Bot",
-        body: "Deleting a bot from JXHP also removes the Heroku app permanently. This action cannot be undone. Your wallet is not refunded for deleted bots.",
+        body: "Deleting a bot from J.H.P also removes its hosting app permanently. This action cannot be undone. Your wallet is not refunded for deleted bots.",
       },
     ],
   },
@@ -75,7 +75,7 @@ const sections = [
     content: [
       {
         heading: "Wallet Model",
-        body: "JXHP uses a pre-paid wallet model. You deposit funds first, then spend them deploying bots. There are no recurring charges — you pay per deployment.",
+        body: "J.H.P uses a pre-paid wallet model. You deposit funds first, then spend them deploying bots. There are no recurring charges — you pay per deployment.",
       },
       {
         heading: "Supported Payment Methods",
@@ -102,7 +102,7 @@ const sections = [
       },
       {
         heading: "Security",
-        body: "Env vars are stored encrypted on Heroku and never exposed in the JXHP UI after initial setup. Values are masked in the configuration editor.",
+        body: "Environment variables are stored securely by the hosting provider and are not exposed in the J.H.P UI after initial setup. Values are masked in the configuration editor.",
       },
     ],
   },
@@ -118,9 +118,9 @@ export default function DocsPage() {
             <BookOpen className="h-5 w-5 text-primary" />
             <Badge variant="outline" className="text-xs">Documentation</Badge>
           </div>
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-3">JXHP Documentation</h1>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-3">J.H.P Documentation</h1>
           <p className="text-muted-foreground max-w-2xl">
-            Everything you need to deploy and manage your bots on JuneX Hosting Platform.
+            Everything you need to deploy and manage your bots on J.H.P.
           </p>
         </div>
 

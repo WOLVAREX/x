@@ -109,8 +109,8 @@ export default function Home() {
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-primary"><Users className="h-4 w-4" /><span className="text-sm font-medium">WOLF TECH</span></div>
-            <h2 id="home-team-heading" className="text-2xl font-bold tracking-tight sm:text-3xl">Meet the people behind JuneX</h2>
-            <p className="mt-2 text-sm text-muted-foreground">The creators building the JuneX Hosting Platform.</p>
+            <h2 id="home-team-heading" className="text-2xl font-bold tracking-tight sm:text-3xl">Meet the people behind J.H.P</h2>
+            <p className="mt-2 text-sm text-muted-foreground">The creators building J.H.P.</p>
           </div>
           <Button variant="outline" className="w-full gap-2 sm:w-auto" asChild><Link href="/developers">Meet the full team <ArrowRight className="h-4 w-4" /></Link></Button>
         </div>
@@ -127,7 +127,7 @@ export default function Home() {
         <div className="rounded-2xl border border-primary/20 bg-primary/5 p-8 sm:p-12 flex flex-col items-center text-center gap-4">
           <h2 className="text-2xl sm:text-3xl font-bold">Ready to deploy your bot?</h2>
           <p className="text-muted-foreground max-w-md">
-            Join hundreds of bot developers already using JuneXHostingPlatform. Free to start, scales with you.
+            Join bot developers already using J.H.P. Free to start, scales with you.
           </p>
           <Button size="lg" className="mt-2 gap-2" asChild>
             <Link href={ctaHref}>

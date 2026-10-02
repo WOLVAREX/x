@@ -9,7 +9,7 @@ router.get("/dashboard/summary", requireAuth, async (req, res): Promise<void> =>
   const user = (req as typeof req & { user: typeof usersTable.$inferSelect }).user;
 
   const rows = await db
-    .select({ deployment: deploymentsTable, templateName: templatesTable.name })
+    .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(eq(deploymentsTable.userId, user.id))
@@ -20,6 +20,7 @@ router.get("/dashboard/summary", requireAuth, async (req, res): Promise<void> =>
     userId: r.deployment.userId,
     templateId: r.deployment.templateId,
     templateName: r.templateName ?? "Unknown",
+    templateThumbnail: r.templateThumbnail ?? null,
     botName: r.deployment.botName,
     herokuAppId: r.deployment.herokuAppId ?? null,
     status: r.deployment.status,
