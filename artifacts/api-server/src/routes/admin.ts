@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, deploymentsTable, templatesTable, usersTable, paymentsTable, walletTransactionsTable } from "@workspace/db";
+import { db, deploymentsTable, templatesTable, usersTable, paymentsTable, walletTransactionsTable, coinTransactionsTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
@@ -145,6 +145,7 @@ router.delete("/admin/users/:id", requireAdmin, async (req, res): Promise<void> 
 
 // ── List deployments ──────────────────────────────────────
 router.get("/admin/deployments", requireAdmin, async (_req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
   const rows = await db
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, username: usersTable.username })
     .from(deploymentsTable)
@@ -155,8 +156,52 @@ router.get("/admin/deployments", requireAdmin, async (_req, res): Promise<void> 
     id: r.deployment.id, userId: r.deployment.userId, templateId: r.deployment.templateId,
     templateName: r.templateName ?? "Unknown", username: r.username ?? "Unknown",
     botName: r.deployment.botName, herokuAppId: r.deployment.herokuAppId ?? null,
-    status: r.deployment.status, createdAt: r.deployment.createdAt, updatedAt: r.deployment.updatedAt,
+    status: r.deployment.status, planId: r.deployment.planId ?? null,
+    expiresAt: r.deployment.expiresAt ?? null, daysLeft: r.deployment.expiresAt ? Math.max(0, Math.ceil((r.deployment.expiresAt.getTime() - Date.now()) / 86_400_000)) : null,
+    archivedAt: r.deployment.archivedAt ?? null, createdAt: r.deployment.createdAt, updatedAt: r.deployment.updatedAt,
   })));
+});
+
+router.get("/admin/transactions", requireAdmin, async (_req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
+  const [walletRows, coinRows, paymentRows] = await Promise.all([
+    db.select({ transaction: walletTransactionsTable, username: usersTable.username, email: usersTable.email })
+      .from(walletTransactionsTable).leftJoin(usersTable, eq(walletTransactionsTable.userId, usersTable.id))
+      .orderBy(desc(walletTransactionsTable.createdAt)).limit(250),
+    db.select({ transaction: coinTransactionsTable, username: usersTable.username, email: usersTable.email })
+      .from(coinTransactionsTable).leftJoin(usersTable, eq(coinTransactionsTable.userId, usersTable.id))
+      .orderBy(desc(coinTransactionsTable.createdAt)).limit(250),
+    db.select({ payment: paymentsTable, username: usersTable.username, email: usersTable.email, templateName: templatesTable.name })
+      .from(paymentsTable).leftJoin(usersTable, eq(paymentsTable.userId, usersTable.id))
+      .leftJoin(templatesTable, eq(paymentsTable.templateId, templatesTable.id))
+      .orderBy(desc(paymentsTable.createdAt)).limit(250),
+  ]);
+
+  const transactions = [
+    ...walletRows.map(({ transaction, username, email }) => ({
+      id: `wallet-${transaction.id}`, kind: "wallet" as const, userId: transaction.userId,
+      username: username ?? "Deleted user", email: email ?? "", type: transaction.type,
+      amount: transaction.amount, currency: transaction.currency, status: transaction.status,
+      method: transaction.method ?? "—", reference: transaction.reference, description: transaction.description,
+      createdAt: transaction.createdAt,
+    })),
+    ...coinRows.map(({ transaction, username, email }) => ({
+      id: `coins-${transaction.id}`, kind: "coins" as const, userId: transaction.userId,
+      username: username ?? "Deleted user", email: email ?? "", type: transaction.type,
+      amount: transaction.amount, currency: "COIN", status: "success",
+      method: "wallet", reference: transaction.reference, description: transaction.description,
+      createdAt: transaction.createdAt,
+    })),
+    ...paymentRows.map(({ payment, username, email, templateName }) => ({
+      id: `payment-${payment.id}`, kind: "payment" as const, userId: payment.userId,
+      username: username ?? "Deleted user", email: email ?? "", type: "template payment",
+      amount: payment.amount, currency: payment.currency, status: payment.status,
+      method: payment.method, reference: payment.reference, description: `Template: ${templateName ?? "Unknown"}`,
+      createdAt: payment.createdAt,
+    })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  res.json({ transactions, limit: 250 });
 });
 
 // ── Suspend bot ───────────────────────────────────────────

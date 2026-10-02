@@ -24,18 +24,24 @@ import {
   getGetAdminStatsQueryKey, getListAdminUsersQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   Loader2, Users, Server, LayoutTemplate, Activity, Ban, Trash2,
   Plus, Github, ExternalLink, Bot, ShieldCheck, TrendingUp, Zap,
   Eye, Globe, AlertCircle, CheckCircle2, Clock, XCircle, UserCircle2,
   Pencil, Terminal, UserX, UserCheck, RefreshCw, Database,
-  Wifi, WifiOff, DollarSign, KeyRound,
+  Wifi, WifiOff, DollarSign, KeyRound, Coins, CreditCard,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AdminTemplateEditModal } from "@/components/admin-template-edit-modal";
 
 const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
+type AdminTransaction = {
+  id: string; kind: "wallet" | "coins" | "payment"; userId: number; username: string; email: string;
+  type: string; amount: number; currency: string; status: string; method: string;
+  reference: string | null; description: string; createdAt: string;
+};
 function authHeader() {
   const token = localStorage.getItem("junex_token");
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
@@ -49,6 +55,8 @@ function StatusBadge({ status }: { status: string }) {
     building:  { cls: "bg-blue-500/15 text-blue-400 border-blue-500/20", icon: <Loader2 className="h-3 w-3 animate-spin" /> },
     queued:    { cls: "bg-amber-500/15 text-amber-500 border-amber-500/20", icon: <Clock className="h-3 w-3" /> },
     suspended: { cls: "bg-red-500/15 text-red-400 border-red-500/20", icon: <Ban className="h-3 w-3" /> },
+    expired:   { cls: "bg-amber-500/15 text-amber-400 border-amber-500/20", icon: <Clock className="h-3 w-3" /> },
+    archived:  { cls: "bg-slate-500/15 text-slate-400 border-slate-500/20", icon: <Trash2 className="h-3 w-3" /> },
   };
   const { cls, icon } = config[status] ?? config.offline;
   return (
@@ -157,8 +165,21 @@ export default function AdminDashboard() {
 
   const { data: stats } = useGetAdminStats();
   const { data: users, isLoading: isLoadingUsers } = useListAdminUsers();
-  const { data: deployments, isLoading: isLoadingDeployments } = useListAdminDeployments();
+  const { data: deployments, isLoading: isLoadingDeployments, isError: hasDeploymentsError, error: deploymentsError, refetch: refetchDeployments, isFetching: isFetchingDeployments } = useListAdminDeployments({
+    query: { queryKey: getListAdminDeploymentsQueryKey(), refetchInterval: 15_000 },
+    request: { cache: "no-store" },
+  });
   const { data: templates, isLoading: isLoadingTemplates } = useListTemplates();
+  const { data: transactionsData, isLoading: isLoadingTransactions, isError: hasTransactionsError, error: transactionsError, refetch: refetchTransactions } = useQuery<{ transactions: AdminTransaction[] }>({
+    queryKey: ["admin-transactions"],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/api/admin/transactions`, { headers: authHeader(), cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Could not load transaction history");
+      return data;
+    },
+    refetchInterval: 30_000,
+  });
 
   const suspendMutation = useSuspendDeployment({
     mutation: {
@@ -376,7 +397,7 @@ export default function AdminDashboard() {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={handleTabChange}>
-              <TabsList className="bg-muted/50 p-1">
+              <TabsList className="flex h-auto flex-wrap justify-start gap-1 bg-muted/50 p-1">
                 <TabsTrigger value="templates" className="gap-2">
                   <LayoutTemplate className="h-3.5 w-3.5" /> Templates
                   {templates && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1.5">{templates.length}</Badge>}
@@ -388,6 +409,10 @@ export default function AdminDashboard() {
                 <TabsTrigger value="users" className="gap-2">
                   <Users className="h-3.5 w-3.5" /> Users
                   {users && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1.5">{users.length}</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="transactions" className="gap-2">
+                  <CreditCard className="h-3.5 w-3.5" /> Transactions
+                  {transactionsData && <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-[10px]">{transactionsData.transactions.length}</Badge>}
                 </TabsTrigger>
                 <TabsTrigger value="health" className="gap-2">
                   <Activity className="h-3.5 w-3.5" /> Health
@@ -495,7 +520,10 @@ export default function AdminDashboard() {
                         <CardTitle>All Deployed Bots</CardTitle>
                         <CardDescription>Monitor, suspend, delete and view logs of every bot.</CardDescription>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <Button variant="outline" size="sm" className="gap-2" onClick={() => void refetchDeployments()} disabled={isFetchingDeployments}>
+                          <RefreshCw className={`h-3.5 w-3.5 ${isFetchingDeployments ? "animate-spin" : ""}`} /> Refresh
+                        </Button>
                         <Globe className="h-4 w-4 text-emerald-500" />
                         <span>{stats?.onlineDeployments ?? 0} online</span>
                       </div>
@@ -504,6 +532,12 @@ export default function AdminDashboard() {
                   <CardContent className="p-0">
                     {isLoadingDeployments ? (
                       <div className="flex h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                    ) : hasDeploymentsError ? (
+                      <div className="flex min-h-40 flex-col items-center justify-center gap-3 p-6 text-center">
+                        <AlertCircle className="h-8 w-8 text-destructive" />
+                        <p className="text-sm text-muted-foreground">Could not load deployments: {deploymentsError instanceof Error ? deploymentsError.message : "Request failed"}</p>
+                        <Button variant="outline" size="sm" onClick={() => void refetchDeployments()}>Try again</Button>
+                      </div>
                     ) : (
                       <Table>
                         <TableHeader>
@@ -707,6 +741,54 @@ export default function AdminDashboard() {
               </TabsContent>
 
               {/* ── Platform Health Tab ── */}
+              <TabsContent value="transactions" className="mt-6">
+                <Card className="border-border/40">
+                  <CardHeader className="flex flex-row items-start justify-between gap-4">
+                    <div>
+                      <CardTitle>Transaction history</CardTitle>
+                      <CardDescription>Cash top-ups, coin credits and plan charges, plus legacy template payments.</CardDescription>
+                    </div>
+                    <Button variant="outline" size="sm" className="shrink-0 gap-2" onClick={() => void refetchTransactions()}>
+                      <RefreshCw className={`h-3.5 w-3.5 ${isLoadingTransactions ? "animate-spin" : ""}`} /> Refresh
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {isLoadingTransactions ? (
+                      <div className="flex h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                    ) : hasTransactionsError ? (
+                      <div className="flex min-h-40 flex-col items-center justify-center gap-3 p-6 text-center">
+                        <AlertCircle className="h-8 w-8 text-destructive" />
+                        <p className="text-sm text-muted-foreground">Could not load transactions: {transactionsError instanceof Error ? transactionsError.message : "Request failed"}</p>
+                        <Button variant="outline" size="sm" onClick={() => void refetchTransactions()}>Try again</Button>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader><TableRow className="border-border/40 hover:bg-transparent">
+                            <TableHead className="pl-6">User</TableHead><TableHead>Transaction</TableHead><TableHead>Amount</TableHead>
+                            <TableHead>Status</TableHead><TableHead>Method</TableHead><TableHead>Reference</TableHead><TableHead>Date</TableHead>
+                          </TableRow></TableHeader>
+                          <TableBody>
+                            {transactionsData?.transactions.map((transaction) => (
+                              <TableRow key={transaction.id} className="border-border/40">
+                                <TableCell className="pl-6"><div className="font-medium text-sm">{transaction.username}</div><div className="text-xs text-muted-foreground">{transaction.email}</div></TableCell>
+                                <TableCell><div className="text-sm capitalize">{transaction.type}</div><div className="max-w-56 truncate text-xs text-muted-foreground" title={transaction.description}>{transaction.description}</div></TableCell>
+                                <TableCell className="whitespace-nowrap font-mono text-sm">{transaction.currency === "COIN" ? `${transaction.type === "debit" ? "−" : "+"}${transaction.amount} coins` : `${transaction.currency} ${(transaction.amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</TableCell>
+                                <TableCell><Badge variant="outline" className={transaction.status === "success" ? "border-emerald-500/30 text-emerald-400" : transaction.status === "failed" ? "border-red-500/30 text-red-400" : "border-amber-500/30 text-amber-400"}>{transaction.status}</Badge></TableCell>
+                                <TableCell className="text-sm capitalize text-muted-foreground">{transaction.method}</TableCell>
+                                <TableCell className="max-w-40 truncate font-mono text-xs text-muted-foreground" title={transaction.reference ?? undefined}>{transaction.reference ?? "—"}</TableCell>
+                                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{format(new Date(transaction.createdAt), "MMM d, yyyy HH:mm")}</TableCell>
+                              </TableRow>
+                            ))}
+                            {!transactionsData?.transactions.length && <TableRow><TableCell colSpan={7} className="py-12 text-center text-muted-foreground"><Coins className="mx-auto mb-2 h-8 w-8 opacity-30" />No transactions recorded yet.</TableCell></TableRow>}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               <TabsContent value="health" className="mt-6">
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">

@@ -256,6 +256,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
 // ── Routes ────────────────────────────────────────────────
 
 router.get("/deployments", requireAuth, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
   const user = (req as any).user;
   const rows = await db
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })

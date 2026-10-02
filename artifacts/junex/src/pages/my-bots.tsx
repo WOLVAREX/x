@@ -48,7 +48,10 @@ export default function MyBotsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
 
-  const { data: deployments, isLoading } = useListDeployments();
+  const { data: deployments, isLoading, isError, error, refetch } = useListDeployments({
+    query: { queryKey: getListDeploymentsQueryKey(), refetchInterval: (query) => query.state.data?.some((bot) => bot.status === "building" || bot.status === "queued") ? 5_000 : false },
+    request: { cache: "no-store" },
+  });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListDeploymentsQueryKey() });
 
@@ -97,6 +100,13 @@ export default function MyBotsPage() {
         {isLoading ? (
           <div className="flex h-48 items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-destructive/30 py-16 text-center">
+            <AlertCircle className="h-10 w-10 text-destructive/70" />
+            <p className="font-medium">Could not load your bots</p>
+            <p className="max-w-md text-sm text-muted-foreground">{error instanceof Error ? error.message : "The deployments request failed. Your bots have not been removed."}</p>
+            <Button variant="outline" size="sm" onClick={() => void refetch()}>Try again</Button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 border border-dashed rounded-2xl border-border/60">
