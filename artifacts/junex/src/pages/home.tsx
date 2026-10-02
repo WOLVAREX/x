@@ -3,7 +3,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Zap, Shield, Terminal, ArrowRight } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CheckCircle, Zap, Shield, Terminal, ArrowRight, Users } from "lucide-react";
 
 const features = [
   "No DevOps knowledge required",
@@ -32,6 +34,14 @@ const cards = [
 
 export default function Home() {
   const { user } = useAuth();
+  const { data: team = [] } = useQuery<Array<{ id: string; name: string; role: string; bio: string; imageUrl: string | null }>>({
+    queryKey: ["team"],
+    queryFn: async () => {
+      const response = await fetch("/api/team");
+      if (!response.ok) throw new Error("Could not load team profiles");
+      return response.json();
+    },
+  });
   const templatesHref = user ? "/templates" : "/register";
   const ctaHref = user ? "/dashboard" : "/register";
   const ctaLabel = user ? "Go to Dashboard" : "Create Free Account";
@@ -93,6 +103,23 @@ export default function Home() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="container mx-auto max-w-6xl px-4 pb-16 sm:pb-20" aria-labelledby="home-team-heading">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-primary"><Users className="h-4 w-4" /><span className="text-sm font-medium">WOLF TECH</span></div>
+            <h2 id="home-team-heading" className="text-2xl font-bold tracking-tight sm:text-3xl">Meet the people behind JuneX</h2>
+            <p className="mt-2 text-sm text-muted-foreground">The creators building the JuneX Hosting Platform.</p>
+          </div>
+          <Button variant="outline" className="w-full gap-2 sm:w-auto" asChild><Link href="/developers">Meet the full team <ArrowRight className="h-4 w-4" /></Link></Button>
+        </div>
+        {team.length ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {team.slice(0, 3).map((member) => <div key={member.id} className="flex min-w-0 items-center gap-4 rounded-xl border border-border/60 bg-card p-4 sm:p-5">
+            <Avatar className="h-14 w-14 shrink-0"><AvatarImage src={member.imageUrl ?? undefined} alt={member.name} className="object-cover" /><AvatarFallback className="bg-primary/10 font-semibold text-primary">{member.name.slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>
+            <div className="min-w-0"><p className="truncate font-semibold">{member.name}</p><p className="truncate text-sm text-primary">{member.role}</p>{member.bio && <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{member.bio}</p>}</div>
+          </div>)}
+        </div> : <div className="rounded-xl border border-dashed border-border px-5 py-8 text-center text-sm text-muted-foreground">Creator profiles will appear here soon.</div>}
       </section>
 
       {/* ── Bottom CTA banner ── */}

@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { db, deploymentsTable, templatesTable, usersTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, deploymentsTable, templatesTable, usersTable, coinTransactionsTable } from "@workspace/db";
+import { eq, and, isNull, isNotNull, gte, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { getSetting } from "../lib/settings";
+import { findPlan } from "../lib/plans";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,17 @@ async function herokuHeaders(accept = "application/vnd.heroku+json; version=3") 
   };
 }
 
+async function stopHerokuDynos(appName: string): Promise<void> {
+  const response = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, { headers: await herokuHeaders() });
+  if (!response.ok) throw new Error("Could not read Heroku dyno formation");
+  const formations = await response.json() as Array<{ type: string; quantity: number }>;
+  const updates = formations.filter((formation) => formation.quantity > 0).map(({ type }) => ({ type, quantity: 0 }));
+  if (updates.length) {
+    const stopped = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, { method: "PATCH", headers: await herokuHeaders(), body: JSON.stringify({ updates }) });
+    if (!stopped.ok) throw new Error("Could not stop Heroku dynos");
+  }
+}
+
 function ts() {
   return `[${new Date().toISOString()}]`;
 }
@@ -42,7 +54,11 @@ function formatDeployment(d: typeof deploymentsTable.$inferSelect, templateName:
     templateThumbnail: templateThumbnail ?? null,
     botName: d.botName,
     herokuAppId: d.herokuAppId ?? null,
+    appName: d.herokuAppId ?? null,
     status: d.status,
+    planId: d.planId ?? null,
+    expiresAt: d.expiresAt ?? null,
+    daysLeft: d.expiresAt ? Math.max(0, Math.ceil((d.expiresAt.getTime() - Date.now()) / 86_400_000)) : null,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
   };
@@ -245,14 +261,14 @@ router.get("/deployments", requireAuth, async (req, res): Promise<void> => {
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
-    .where(eq(deploymentsTable.userId, user.id))
+    .where(and(eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)))
     .orderBy(deploymentsTable.createdAt);
   res.json(rows.map(r => formatDeployment(r.deployment, r.templateName ?? "Unknown", r.templateThumbnail)));
 });
 
 router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const { templateId, botName, envVars } = req.body;
+  const { templateId, botName, envVars, planId } = req.body;
 
   if (!templateId || !botName) {
     res.status(400).json({ error: "templateId and botName are required" });
@@ -266,19 +282,34 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
 
   const [template] = await db.select().from(templatesTable).where(eq(templatesTable.id, templateId));
   if (!template) { res.status(404).json({ error: "Template not found" }); return; }
+  const plan = await findPlan(planId);
+  if (!plan) { res.status(400).json({ error: "Select a valid hosting plan" }); return; }
+  if (user.suspended) { res.status(403).json({ error: "Your account has been suspended. Contact support." }); return; }
 
-  const [deployment] = await db.insert(deploymentsTable).values({
-    userId: user.id,
-    templateId,
-    botName,
-    status: "building",
-    envVars: envVars ?? {},
-    logs: [
-      `${ts()} Deployment request received`,
-      `${ts()} Template: ${template.name}`,
-      `${ts()} Bot name: ${botName}`,
-    ],
-  }).returning();
+  const expiresAt = new Date(Date.now() + plan.days * 86_400_000);
+  const result = await db.transaction(async (tx) => {
+    if (user.role !== "admin") {
+      const [updatedUser] = await tx.update(usersTable)
+        .set({ coinBalance: sql`${usersTable.coinBalance} - ${plan.coins}` })
+        .where(and(eq(usersTable.id, user.id), gte(usersTable.coinBalance, plan.coins)))
+        .returning({ coinBalance: usersTable.coinBalance });
+      if (!updatedUser) return null;
+    }
+    const [deployment] = await tx.insert(deploymentsTable).values({
+      userId: user.id, templateId, botName, planId: plan.id, expiresAt,
+      status: "building", envVars: envVars ?? {},
+      logs: [`${ts()} Deployment request received`, `${ts()} Template: ${template.name}`, `${ts()} Bot name: ${botName}`, `${ts()} Hosting plan: ${plan.name}`],
+    }).returning();
+    if (user.role !== "admin") {
+      await tx.insert(coinTransactionsTable).values({ userId: user.id, type: "debit", amount: plan.coins, reference: `DEPLOY-${deployment.id}`, description: `${plan.name} hosting plan for ${botName}` });
+    }
+    return deployment;
+  });
+  if (!result) {
+    res.status(402).json({ error: "Not enough coins for this plan", requiredCoins: plan.coins, balance: user.coinBalance });
+    return;
+  }
+  const deployment = result;
 
   // Return immediately — deploy runs in background
   res.status(201).json(formatDeployment(deployment, template.name, template.thumbnail));
@@ -298,7 +329,7 @@ router.get("/deployments/:id", requireAuth, async (req, res): Promise<void> => {
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
-    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
+    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
 
   if (!row) { res.status(404).json({ error: "Deployment not found" }); return; }
   res.json(formatDeployment(row.deployment, row.templateName ?? "Unknown", row.templateThumbnail));
@@ -328,8 +359,10 @@ router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<voi
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
-    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
+    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (row.deployment.expiresAt && row.deployment.expiresAt <= new Date()) { res.status(402).json({ error: "Hosting plan expired. Choose a new plan from the recovery page.", recover: true }); return; }
 
   const appName = row.deployment.herokuAppId;
   if (appName && await getHerokuKey()) {
@@ -357,16 +390,12 @@ router.post("/deployments/:id/stop", requireAuth, async (req, res): Promise<void
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
-    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
+    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
   const appName = row.deployment.herokuAppId;
   if (appName && await getHerokuKey()) {
-    await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
-      method: "PATCH",
-      headers: await herokuHeaders(),
-      body: JSON.stringify({ updates: [{ type: "worker", quantity: 0 }] }),
-    });
+    await stopHerokuDynos(appName);
   }
 
   const logs = (row.deployment.logs as string[]) ?? [];
@@ -387,8 +416,10 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
-    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
+    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (row.deployment.expiresAt && row.deployment.expiresAt <= new Date()) { res.status(402).json({ error: "Hosting plan expired. Choose a new plan from the recovery page.", recover: true }); return; }
 
   const appName = row.deployment.herokuAppId;
   if (appName && await getHerokuKey()) {
@@ -414,19 +445,120 @@ router.delete("/deployments/:id", requireAuth, async (req, res): Promise<void> =
   const [row] = await db
     .select()
     .from(deploymentsTable)
-    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
+    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (row.status === "building" && !row.herokuAppId) { res.status(409).json({ error: "Wait for the Heroku app name to appear before archiving this deployment" }); return; }
 
-  // Delete Heroku app too
-  if (row.herokuAppId && await getHerokuKey()) {
-    await fetch(`${HEROKU_BASE}/apps/${row.herokuAppId}`, {
-      method: "DELETE",
-      headers: await herokuHeaders(),
-    }).catch(() => {});
+  // Archive the JuneX record so its app name, settings, and plan remain recoverable.
+  if (row.herokuAppId) {
+    if (!(await getHerokuKey())) { res.status(503).json({ error: "Heroku is not configured; the bot was not archived" }); return; }
+    try {
+      const deleteRes = await fetch(`${HEROKU_BASE}/apps/${row.herokuAppId}`, { method: "DELETE", headers: await herokuHeaders() });
+      if (!deleteRes.ok && deleteRes.status !== 404) {
+        const data = await deleteRes.json().catch(() => ({})) as any;
+        res.status(502).json({ error: data.message ?? "Heroku could not stop and remove the bot" });
+        return;
+      }
+    } catch {
+      res.status(502).json({ error: "Could not reach Heroku; the bot was not archived" });
+      return;
+    }
   }
 
-  await db.delete(deploymentsTable).where(eq(deploymentsTable.id, id));
-  res.sendStatus(204);
+  const logs = (row.logs as string[]) ?? [];
+  await db.update(deploymentsTable).set({ status: "archived", archivedAt: new Date(), logs: [...logs, `${ts()} Archived for recovery; Heroku app removed`] }).where(eq(deploymentsTable.id, id));
+  res.json({ success: true, appName: row.herokuAppId, recoverable: true });
+});
+
+function normalizeAppName(input: unknown): string {
+  if (typeof input !== "string") return "";
+  return input.trim().replace(/^https?:\/\//i, "").replace(/\.herokuapp\.com\/?$/i, "").replace(/\/$/, "").toLowerCase();
+}
+
+router.get("/recovery/options", requireAuth, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const rows = await db.select({ id: deploymentsTable.id, botName: deploymentsTable.botName, templateName: templatesTable.name })
+    .from(deploymentsTable).leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
+    .where(and(eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
+  res.json(rows.map((row) => ({ ...row, templateName: row.templateName ?? "Unknown" })));
+});
+
+router.get("/recovery/source/:id", requireAuth, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid source bot" }); return; }
+  const [source] = await db.select({ id: deploymentsTable.id, botName: deploymentsTable.botName, envVars: deploymentsTable.envVars })
+    .from(deploymentsTable).where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
+  if (!source) { res.status(404).json({ error: "Source bot not found" }); return; }
+  res.json(source);
+});
+
+router.get("/recovery/lookup", requireAuth, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const appName = normalizeAppName(req.query.appName);
+  if (!appName) { res.status(400).json({ error: "Enter the Heroku app name" }); return; }
+  const [row] = await db.select({ deployment: deploymentsTable, template: templatesTable })
+    .from(deploymentsTable).innerJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
+    .where(and(eq(deploymentsTable.userId, user.id), eq(deploymentsTable.herokuAppId, appName), isNotNull(deploymentsTable.archivedAt)));
+  if (!row) { res.status(404).json({ error: "No archived bot with that app name was found on your account" }); return; }
+  const fields = (row.template.appJson as any)?.env ?? {};
+  const [sources] = await Promise.all([db.select({ id: deploymentsTable.id, botName: deploymentsTable.botName, envVars: deploymentsTable.envVars })
+    .from(deploymentsTable).where(and(eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)))]);
+  res.json({
+    id: row.deployment.id, appName: row.deployment.herokuAppId, botName: row.deployment.botName,
+    templateId: row.template.id, templateName: row.template.name, envVars: row.deployment.envVars,
+    fields, planId: row.deployment.planId, expiresAt: row.deployment.expiresAt,
+    daysLeft: row.deployment.expiresAt ? Math.max(0, Math.ceil((row.deployment.expiresAt.getTime() - Date.now()) / 86_400_000)) : 0,
+    sources: sources.map(({ envVars: _envVars, ...source }) => source),
+  });
+});
+
+router.post("/recovery", requireAuth, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const appName = normalizeAppName(req.body?.appName);
+  if (!appName) { res.status(400).json({ error: "App name is required" }); return; }
+  const [row] = await db.select({ deployment: deploymentsTable, template: templatesTable })
+    .from(deploymentsTable).innerJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
+    .where(and(eq(deploymentsTable.userId, user.id), eq(deploymentsTable.herokuAppId, appName), isNotNull(deploymentsTable.archivedAt)));
+  if (!row) { res.status(404).json({ error: "Archived bot not found" }); return; }
+  if (!(await getHerokuKey())) { res.status(503).json({ error: "Heroku is not configured" }); return; }
+  const inputVars = req.body?.envVars;
+  if (!inputVars || typeof inputVars !== "object" || Array.isArray(inputVars) || Object.keys(inputVars).length > 100 || Object.values(inputVars).some((value) => typeof value !== "string" || value.length > 10_000)) {
+    res.status(400).json({ error: "Bot configuration is invalid" }); return;
+  }
+  const sourceId = Number(req.body?.sourceDeploymentId);
+  let sourceVars: Record<string, string> = {};
+  if (Number.isInteger(sourceId) && sourceId > 0) {
+    const [source] = await db.select({ envVars: deploymentsTable.envVars }).from(deploymentsTable)
+      .where(and(eq(deploymentsTable.id, sourceId), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
+    if (!source) { res.status(400).json({ error: "Selected source bot is unavailable" }); return; }
+    sourceVars = source.envVars as Record<string, string>;
+  }
+  const envVars = { ...sourceVars, ...(inputVars as Record<string, string>) };
+  const fields = (row.template.appJson as any)?.env ?? {};
+  const missing = Object.entries(fields).find(([key, config]: [string, any]) => config.required !== false && !envVars[key]?.trim());
+  if (missing) { res.status(400).json({ error: `${missing[0]} is required` }); return; }
+
+  const stillValid = row.deployment.expiresAt && row.deployment.expiresAt > new Date();
+  const plan = stillValid ? undefined : await findPlan(req.body?.planId);
+  if (!stillValid && !plan) { res.status(400).json({ error: "The old plan expired. Select a plan to recover this bot" }); return; }
+  const expiresAt = stillValid ? row.deployment.expiresAt! : new Date(Date.now() + plan!.days * 86_400_000);
+  const result = await db.transaction(async (tx) => {
+    if (!stillValid && user.role !== "admin") {
+      const [account] = await tx.update(usersTable).set({ coinBalance: sql`${usersTable.coinBalance} - ${plan!.coins}` })
+        .where(and(eq(usersTable.id, user.id), gte(usersTable.coinBalance, plan!.coins))).returning({ id: usersTable.id });
+      if (!account) return null;
+      await tx.insert(coinTransactionsTable).values({ userId: user.id, type: "debit", amount: plan!.coins, reference: `RECOVER-${row.deployment.id}-${Date.now()}`, description: `${plan!.name} recovery plan for ${row.deployment.botName}` });
+    }
+    const [updated] = await tx.update(deploymentsTable).set({
+      status: "building", envVars, archivedAt: null, expiresAt, planId: plan?.id ?? row.deployment.planId,
+      logs: [...((row.deployment.logs as string[]) ?? []), `${ts()} Recovery started`, `${ts()} Reusing app name ${appName}`],
+    }).where(and(eq(deploymentsTable.id, row.deployment.id), isNotNull(deploymentsTable.archivedAt))).returning();
+    return updated;
+  });
+  if (!result) { res.status(402).json({ error: "Not enough coins to renew this bot", requiredCoins: plan?.coins, balance: user.coinBalance }); return; }
+  res.status(202).json({ id: result.id, appName });
+  void herokuDeploy(result.id, row.template, result.botName, envVars);
 });
 
 router.patch("/deployments/:id/env", requireAuth, async (req, res): Promise<void> => {
@@ -444,7 +576,7 @@ router.patch("/deployments/:id/env", requireAuth, async (req, res): Promise<void
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
-    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
+    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
   // Push to Heroku if app exists
@@ -475,7 +607,7 @@ router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promis
   const [deployment] = await db
     .select()
     .from(deploymentsTable)
-    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
+    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
 
   if (!deployment) { res.status(404).json({ error: "Not found" }); return; }
   if (!deployment.herokuAppId) { res.status(400).json({ error: "Bot not yet deployed to Heroku" }); return; }

@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import {
   Loader2, Search, Bot, Play, Square, RotateCcw,
-  Terminal, ExternalLink, Trash2, Plus, AlertCircle,
+  Terminal, ExternalLink, Trash2, Plus, AlertCircle, Copy, Coins,
   CheckCircle2, Clock, XCircle,
 } from "lucide-react";
 import {
@@ -55,7 +55,7 @@ export default function MyBotsPage() {
   const startMutation = useStartDeployment({ mutation: { onSuccess: () => { toast({ title: "Bot starting..." }); invalidate(); } } });
   const stopMutation = useStopDeployment({ mutation: { onSuccess: () => { toast({ title: "Bot stopped" }); invalidate(); } } });
   const restartMutation = useRestartDeployment({ mutation: { onSuccess: () => { toast({ title: "Bot restarting..." }); invalidate(); } } });
-  const deleteMutation = useDeleteDeployment({ mutation: { onSuccess: () => { toast({ title: "Bot deleted" }); invalidate(); } } });
+  const deleteMutation = useDeleteDeployment({ mutation: { onSuccess: () => { toast({ title: "Bot archived for recovery", description: "Paste its saved app name on the Recover page." }); invalidate(); } } });
 
   const filtered = (deployments ?? []).filter(d =>
     search === "" ||
@@ -157,12 +157,15 @@ export default function MyBotsPage() {
                       <Clock className="h-3 w-3" /> {format(new Date(dep.createdAt), "MMM d, yyyy")}
                     </span>
                     {dep.herokuAppId && (
-                      <a href={`https://${dep.herokuAppId}.herokuapp.com`} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-1 hover:text-primary transition-colors">
-                        <ExternalLink className="h-3 w-3" /> heroku
-                      </a>
+                      <div className="flex min-w-0 items-center gap-1">
+                        <button type="button" className="inline-flex min-w-0 items-center gap-1 rounded px-1 py-1 hover:text-primary" title="Copy Heroku app name" onClick={() => navigator.clipboard.writeText(dep.herokuAppId!).then(() => toast({ title: "App name copied" })).catch(() => toast({ title: "Could not copy app name", variant: "destructive" }))}>
+                          <Copy className="h-3 w-3 shrink-0" /><span className="max-w-32 truncate font-mono">{dep.herokuAppId}</span>
+                        </button>
+                        <a href={`https://${dep.herokuAppId}.herokuapp.com`} target="_blank" rel="noopener noreferrer" aria-label="Open bot on Heroku" className="p-1 hover:text-primary"><ExternalLink className="h-3 w-3" /></a>
+                      </div>
                     )}
                   </div>
+                  {(() => { const meta = dep as typeof dep & { daysLeft?: number | null; expiresAt?: string | null }; return meta.expiresAt ? <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Coins className="h-3 w-3 text-primary" />{meta.daysLeft === 0 ? "Plan expired" : `${meta.daysLeft} day${meta.daysLeft === 1 ? "" : "s"} left`}</div> : null; })()}
 
                   {/* Actions */}
                   <div className="flex gap-2 mt-auto pt-3 border-t border-border/40">
@@ -199,14 +202,14 @@ export default function MyBotsPage() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete {dep.botName}?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This permanently deletes the bot and removes it from Heroku. Cannot be undone.
+                            This archives the bot in JuneX, stops and removes its Heroku app, and keeps its app name and configuration available for recovery.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction className="bg-destructive text-destructive-foreground"
                             onClick={() => deleteMutation.mutate({ id: dep.id })}>
-                            Yes, Delete
+                            Archive for recovery
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>

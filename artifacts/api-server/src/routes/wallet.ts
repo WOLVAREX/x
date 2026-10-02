@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
-import { db, usersTable, walletTransactionsTable, templatesTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { db, usersTable, walletTransactionsTable, templatesTable, coinTransactionsTable } from "@workspace/db";
+import { eq, desc, sql, and } from "drizzle-orm";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -28,15 +28,23 @@ function formatPhone(phone: string): string {
 }
 
 async function creditWallet(userId: number, amount: number, currency: string, reference: string) {
-  const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-  if (!freshUser) return;
-  const newBalance = (freshUser.walletBalance ?? 0) + amount;
-  await db.update(usersTable).set({ walletBalance: newBalance }).where(eq(usersTable.id, userId));
-  await db.update(walletTransactionsTable)
-    .set({ status: "success", balanceAfter: newBalance })
-    .where(eq(walletTransactionsTable.reference, reference));
-  logger.info({ userId, amount, newBalance }, "Wallet credited");
-  return newBalance;
+  if (currency !== "KES") throw new Error("Coin deposits currently require KES");
+  const coins = Math.floor(amount * 5 / 100);
+  return db.transaction(async (tx) => {
+    const [claim] = await tx.update(walletTransactionsTable).set({ status: "success" })
+      .where(and(eq(walletTransactionsTable.reference, reference), eq(walletTransactionsTable.status, "pending")))
+      .returning({ id: walletTransactionsTable.id });
+    if (!claim) {
+      const [user] = await tx.select({ coinBalance: usersTable.coinBalance }).from(usersTable).where(eq(usersTable.id, userId));
+      return user?.coinBalance ?? 0;
+    }
+    const [user] = await tx.update(usersTable).set({ coinBalance: sql`${usersTable.coinBalance} + ${coins}` })
+      .where(eq(usersTable.id, userId)).returning({ coinBalance: usersTable.coinBalance });
+    if (!user) throw new Error("Account not found while crediting coin wallet");
+    await tx.insert(coinTransactionsTable).values({ userId, type: "credit", amount: coins, reference: `PAY-${reference}`, description: `KES ${amount / 100} wallet top-up` });
+    await tx.update(walletTransactionsTable).set({ balanceAfter: user.coinBalance }).where(eq(walletTransactionsTable.id, claim.id));
+    return user.coinBalance;
+  });
 }
 
 // ── Get wallet balance + transactions ────────────────────
@@ -49,15 +57,16 @@ router.get("/wallet", requireAuth, async (req, res): Promise<void> => {
     .where(eq(walletTransactionsTable.userId, user.id))
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(50);
-  res.json({ balance: fresh?.walletBalance ?? 0, currency: "KES", transactions });
+  res.json({ balance: fresh?.coinBalance ?? 0, currency: "COIN", transactions });
 });
 
 // ── Initiate card deposit ─────────────────────────────────
 router.post("/wallet/deposit/card", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { amount, currency } = req.body;
-  if (!amount || amount < 100) { res.status(400).json({ error: "Minimum deposit is KES 1" }); return; }
+  if (!Number.isInteger(amount) || amount < 300) { res.status(400).json({ error: "Minimum deposit is KES 3" }); return; }
   if (!PAYSTACK_SECRET) { res.status(500).json({ error: "Payment provider not configured" }); return; }
+  if (currency && currency !== "KES") { res.status(400).json({ error: "Coin top-ups are charged in KES" }); return; }
 
   const reference = generateReference();
   const useCurrency = currency ?? "KES";
@@ -96,10 +105,9 @@ router.post("/wallet/deposit/card", requireAuth, async (req, res): Promise<void>
 router.post("/wallet/deposit/mpesa", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { phone, amount } = req.body;
-  if (!phone || !amount) { res.status(400).json({ error: "phone and amount are required" }); return; }
-  if (amount < 100) { res.status(400).json({ error: "Minimum deposit is KES 1" }); return; }
+  if (!phone || !Number.isInteger(amount)) { res.status(400).json({ error: "phone and a valid amount are required" }); return; }
+  if (amount < 300) { res.status(400).json({ error: "Minimum deposit is KES 3" }); return; }
   if (!PAYSTACK_SECRET) { res.status(500).json({ error: "Payment provider not configured" }); return; }
-
   const reference = generateReference();
   const formattedPhone = formatPhone(phone);
 
@@ -145,10 +153,11 @@ router.get("/wallet/verify/:reference", requireAuth, async (req, res): Promise<v
     .select()
     .from(walletTransactionsTable)
     .where(eq(walletTransactionsTable.reference, ref));
+  if (!existing || existing.userId !== user.id) { res.status(404).json({ error: "Payment reference not found" }); return; }
 
   if (existing?.status === "success") {
     const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
-    res.json({ status: "success", newBalance: freshUser?.walletBalance ?? 0, amount: existing.amount, currency: existing.currency, alreadyCredited: true });
+    res.json({ status: "success", newBalance: freshUser?.coinBalance ?? 0, amount: existing.amount, currency: existing.currency, alreadyCredited: true });
     return;
   }
 
@@ -158,6 +167,7 @@ router.get("/wallet/verify/:reference", requireAuth, async (req, res): Promise<v
     });
     const data = await response.json() as any;
     if (!data.status || !data.data) { res.status(400).json({ error: data.message ?? "Verification failed" }); return; }
+    if (data.data.amount !== existing.amount || data.data.currency !== "KES") { res.status(400).json({ error: "Payment amount or currency does not match this top-up" }); return; }
 
     const txStatus = data.data.status;
 
@@ -180,13 +190,15 @@ router.get("/wallet/verify/:reference", requireAuth, async (req, res): Promise<v
 router.post("/wallet/webhook", async (req, res): Promise<void> => {
   // Verify HMAC signature
   const signature = req.headers["x-paystack-signature"] as string;
-  if (PAYSTACK_SECRET && signature) {
-    const hash = crypto.createHmac("sha512", PAYSTACK_SECRET).update(JSON.stringify(req.body)).digest("hex");
-    if (hash !== signature) {
-      logger.warn("Invalid Paystack webhook signature");
-      res.sendStatus(400);
-      return;
-    }
+  if (!PAYSTACK_SECRET || !signature) {
+    res.sendStatus(400);
+    return;
+  }
+  const hash = crypto.createHmac("sha512", PAYSTACK_SECRET).update(JSON.stringify(req.body)).digest("hex");
+  if (hash !== signature) {
+    logger.warn("Invalid Paystack webhook signature");
+    res.sendStatus(400);
+    return;
   }
 
   const event = req.body as any;
@@ -207,7 +219,7 @@ router.post("/wallet/webhook", async (req, res): Promise<void> => {
         .from(walletTransactionsTable)
         .where(eq(walletTransactionsTable.reference, reference));
 
-      if (tx && tx.status !== "success") {
+      if (tx && tx.userId === userId && tx.status !== "success" && tx.amount === amount && tx.currency === currency) {
         await creditWallet(userId, amount, currency, reference);
         logger.info({ userId, amount, reference }, "Wallet auto-credited via webhook");
       }

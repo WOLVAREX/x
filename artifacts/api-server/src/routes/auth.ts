@@ -7,11 +7,13 @@ import { signToken, requireAuth } from "../lib/auth";
 const router: IRouter = Router();
 router.post("/auth/register", async (req, res): Promise<void> => {
   const body = req.body.data ?? req.body;
-  const { username, email, password } = body;
-  if (!username || !email || !password) {
-    res.status(400).json({ error: "username, email and password are required" });
+  const { username, email, password, country } = body;
+  const supportedCountries = new Set(["KE", "NG", "GH", "ZA", "CI", "OTHER"]);
+  if (!username || !email || !password || !country) {
+    res.status(400).json({ error: "username, email, password and country are required" });
     return;
   }
+  if (!supportedCountries.has(country)) { res.status(400).json({ error: "Select a Paystack supported country or Other" }); return; }
   if (username.length < 3) {
     res.status(400).json({ error: "Username must be at least 3 characters" });
     return;
@@ -33,11 +35,12 @@ const [user] = await db.insert(usersTable).values({
   email,
   passwordHash,
   role: "user",
+  country,
 }).returning();
 
   const token = signToken(user.id, user.role);
   res.status(201).json({
-    user: { id: user.id, username: user.username, email: user.email, role: user.role, createdAt: user.createdAt },
+    user: { id: user.id, username: user.username, email: user.email, role: user.role, country: user.country, coinBalance: user.coinBalance, createdAt: user.createdAt },
     token,
   });
 });
@@ -67,7 +70,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   const token = signToken(user.id, user.role);
   res.json({
-    user: { id: user.id, username: user.username, email: user.email, role: user.role, createdAt: user.createdAt },
+    user: { id: user.id, username: user.username, email: user.email, role: user.role, country: user.country, coinBalance: user.coinBalance, createdAt: user.createdAt },
     token,
   });
 });
@@ -83,6 +86,8 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     username: user.username,
     email: user.email,
     role: user.role,
+    country: user.country,
+    coinBalance: user.coinBalance,
     createdAt: user.createdAt,
   });
 });

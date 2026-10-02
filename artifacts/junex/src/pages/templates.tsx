@@ -5,12 +5,8 @@ import { useListTemplates, useListTemplateCategories } from "@workspace/api-clie
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Github, Bot, ExternalLink, Zap, CreditCard, Gift, Globe } from "lucide-react";
+import { Loader2, Search, Github, Bot, ExternalLink, Zap, Gift, Globe, Coins } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
-
-function fmt(price: number, currency: string) {
-  return `${currency} ${(price / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-}
 
 export default function Templates() {
   const [search, setSearch] = useState("");
@@ -88,11 +84,11 @@ export default function Templates() {
                         <h3 className="font-semibold text-sm leading-snug">{template.name}</h3>
                         {(template.isFree || template.price === 0) ? (
                           <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 gap-1 flex-shrink-0 text-xs">
-                            <Gift className="h-3 w-3" /> Free
+                            <Gift className="h-3 w-3" /> No template fee
                           </Badge>
                         ) : (
                           <Badge className="bg-primary/15 text-primary border-primary/20 flex-shrink-0 text-xs">
-                            {fmt(template.price, template.currency)}
+                            <span className="inline-flex items-center gap-1"><Coins className="h-3 w-3" /> Hosting plan</span>
                           </Badge>
                         )}
                       </div>

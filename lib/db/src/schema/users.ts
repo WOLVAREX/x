@@ -12,6 +12,8 @@ export const usersTable = pgTable("users", {
   githubId: text("github_id").unique(),
   avatarUrl: text("avatar_url"),
   walletBalance: integer("wallet_balance").notNull().default(0),
+  coinBalance: integer("coin_balance").notNull().default(0),
+  country: text("country").notNull().default("OTHER"),
   suspended: boolean("suspended").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

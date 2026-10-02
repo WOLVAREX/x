@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
 import {
   Moon, Sun, Terminal, Menu, X,
-  LayoutDashboard, Grid3X3, ShieldCheck,
-  LogOut, LogIn, UserPlus, Wallet, Users, Bot,
+  LayoutDashboard, Grid3X3, ShieldCheck, LifeBuoy,
+  LogOut, LogIn, UserPlus, Wallet, Bot,
 } from "lucide-react";
 
 export function Navbar() {
@@ -19,9 +19,9 @@ export function Navbar() {
     ...(user ? [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/my-bots", label: "My Bots", icon: Bot },
+      { href: "/recover", label: "Recover", icon: LifeBuoy },
     ] : []),
     { href: "/templates", label: "Templates", icon: Grid3X3 },
-    { href: "/developers", label: "Team", icon: Users },
     ...(user ? [{ href: "/wallet", label: "Payments", icon: Wallet }] : []),
     ...(user?.role === "admin" ? [{ href: "/admin", label: "Admin", icon: ShieldCheck }] : []),
   ];

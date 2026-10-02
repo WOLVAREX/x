@@ -7,18 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
-import { useCreateDeployment } from "@workspace/api-client-react";
 import type { Template } from "@workspace/api-client-react";
 import {
-  Loader2, Github, ArrowLeft, Bot, Users, Zap, Lock,
-  KeyRound, CreditCard, CheckCircle2, Gift, Wallet, AlertCircle,
+  Loader2, Github, ArrowLeft, Bot, Users, Zap, KeyRound, Gift, Coins,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-function fmt(amount: number, currency = "KES") {
-  return `${currency} ${(amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-}
+type HostingPlan = { id: string; name: string; days: number; coins: number };
 
 function authHeader() {
   const token = localStorage.getItem("junex_token");
@@ -64,8 +61,14 @@ export default function TemplateDetail() {
 
   const [botName, setBotName] = useState("");
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
-  const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [checkingBalance, setCheckingBalance] = useState(false);
+  const [coinBalance, setCoinBalance] = useState<number>(0);
+  const [isLoadingCoins, setIsLoadingCoins] = useState(true);
+  const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [isDeploying, setIsDeploying] = useState(false);
+  const { data: planData } = useQuery<{ plans: HostingPlan[]; coinsPerKes: number }>({ queryKey: ["hosting-plans"], queryFn: async () => { const response = await fetch("/api/plans"); if (!response.ok) throw new Error("Could not load hosting plans"); return response.json(); } });
+  const plans = planData?.plans ?? [];
+  const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? plans[0];
 
   // Inject OG / Twitter meta tags while the page is mounted
   useEffect(() => {
@@ -93,26 +96,14 @@ export default function TemplateDetail() {
   }, [template]);
 
   useEffect(() => {
-    if (!template || template.isFree) return;
-    setCheckingBalance(true);
+    if (!template) return;
+    setIsLoadingCoins(true);
     fetch("/api/wallet", { headers: authHeader() })
-      .then(r => r.json())
-      .then(d => setWalletBalance(d.balance ?? 0))
-      .catch(() => setWalletBalance(0))
-      .finally(() => setCheckingBalance(false));
+      .then((r) => r.json())
+      .then((d) => setCoinBalance(d.balance ?? 0))
+      .catch(() => setCoinBalance(0))
+      .finally(() => setIsLoadingCoins(false));
   }, [template]);
-
-  const createMutation = useCreateDeployment({
-    mutation: {
-      onSuccess: (data) => {
-        toast({ title: "Deployment started!" });
-        setLocation(`/deployments/${data.id}`);
-      },
-      onError: (error: any) => {
-        toast({ title: "Deployment failed", description: error.data?.error ?? "Unknown error", variant: "destructive" });
-      },
-    },
-  });
 
   function validateForm(): boolean {
     if (!botName.trim()) { toast({ title: "Bot name is required", variant: "destructive" }); return false; }
@@ -125,33 +116,29 @@ export default function TemplateDetail() {
     return true;
   }
 
-  async function handleDeploy(e: React.FormEvent) {
+  function handleDeploy(e: React.FormEvent) {
     e.preventDefault();
     if (!validateForm() || !template) return;
+    if (!plans.length) { toast({ title: "Hosting plans are unavailable", variant: "destructive" }); return; }
+    setSelectedPlanId(plans[0].id);
+    setIsPlanDialogOpen(true);
+  }
 
-    if (!template.isFree) {
-      const deductRes = await fetch("/api/wallet/deduct", {
-        method: "POST",
-        headers: authHeader(),
-        body: JSON.stringify({ templateId: template.id, description: `Deployed: ${template.name}` }),
-      });
-      const deductData = await deductRes.json();
-      if (!deductRes.ok) {
-        if (deductRes.status === 402) {
-          toast({
-            title: "Insufficient balance",
-            description: `You need ${fmt(deductData.required)} but have ${fmt(deductData.balance)}. Top up your wallet.`,
-            variant: "destructive",
-          });
-          return;
-        }
-        toast({ title: deductData.error ?? "Payment failed", variant: "destructive" });
+  async function confirmDeploy() {
+    if (!template || !selectedPlan) return;
+    setIsDeploying(true);
+    try {
+      const response = await fetch("/api/deployments", { method: "POST", headers: authHeader(), body: JSON.stringify({ templateId: template.id, botName: botName.trim(), envVars, planId: selectedPlan.id }) });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 402) toast({ title: "Not enough coins", description: `This plan needs ${data.requiredCoins} coins. Your balance is ${data.balance}. Add coins in your wallet.`, variant: "destructive" });
+        else toast({ title: "Deployment failed", description: data.error ?? "Please try again.", variant: "destructive" });
         return;
       }
-      setWalletBalance(deductData.newBalance);
-    }
-
-    createMutation.mutate({ data: { templateId: template.id, botName: botName.trim(), envVars } });
+      toast({ title: "Deployment started!", description: `${selectedPlan.name} · ${selectedPlan.coins} coins` });
+      setLocation(`/deployments/${data.id}`);
+    } catch { toast({ title: "Could not start deployment", variant: "destructive" }); }
+    finally { setIsDeploying(false); }
   }
 
   if (isLoading) {
@@ -178,11 +165,6 @@ export default function TemplateDetail() {
   const envFields = Object.entries(
     (template.appJson?.env as Record<string, { description?: string; required?: boolean }>) ?? {}
   );
-
-  const price = template.price ?? 0;
-  const currency = template.currency ?? "KES";
-  const hasEnoughBalance = template.isFree || (walletBalance !== null && walletBalance >= price);
-  const shortfall = walletBalance !== null ? Math.max(0, price - walletBalance) : 0;
 
   return (
     <Layout>
@@ -213,15 +195,8 @@ export default function TemplateDetail() {
                   <Users className="h-3 w-3" /> {template.deployCount} deployed
                 </Badge>
               )}
-              {template.isFree ? (
-                <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/20 gap-1">
-                  <Gift className="h-3 w-3" /> Free
-                </Badge>
-              ) : (
-                <Badge className="bg-primary/15 text-primary border-primary/20 gap-1">
-                  <CreditCard className="h-3 w-3" /> {fmt(price, currency)}
-                </Badge>
-              )}
+              {template.isFree && <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/20 gap-1"><Gift className="h-3 w-3" /> Free template</Badge>}
+              <Badge variant="outline" className="gap-1"><Coins className="h-3 w-3" /> Hosting plan required</Badge>
             </div>
             <p className="text-muted-foreground mt-1 text-sm">{template.description}</p>
             <p className="text-xs text-muted-foreground/60 mt-0.5 font-mono">/{template.slug}</p>
@@ -237,40 +212,6 @@ export default function TemplateDetail() {
         </div>
 
         <Separator className="mb-6" />
-
-        {/* Balance check */}
-        {!template.isFree && (
-          <Card className={`mb-6 border ${hasEnoughBalance ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5"}`}>
-            <CardContent className="p-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                {checkingBalance ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                ) : hasEnoughBalance ? (
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-                ) : (
-                  <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0" />
-                )}
-                <div>
-                  <p className="text-sm font-medium">
-                    {checkingBalance ? "Checking balance..." : hasEnoughBalance
-                      ? "Sufficient balance"
-                      : "Insufficient balance"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Wallet: {walletBalance !== null ? fmt(walletBalance, currency) : "..."} &nbsp;|&nbsp;
-                    Required: {fmt(price, currency)}
-                    {!hasEnoughBalance && shortfall > 0 && ` (need ${fmt(shortfall, currency)} more)`}
-                  </p>
-                </div>
-              </div>
-              {!hasEnoughBalance && (
-                <Button size="sm" className="gap-2 flex-shrink-0" asChild>
-                  <Link href="/wallet"><Wallet className="h-4 w-4" /> Top Up</Link>
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         {/* Deploy form */}
         <form onSubmit={handleDeploy} className="space-y-6">
@@ -329,18 +270,28 @@ export default function TemplateDetail() {
             type="submit"
             className="w-full gap-2"
             size="lg"
-            disabled={createMutation.isPending || (!template.isFree && !hasEnoughBalance)}
+            disabled={isDeploying || isLoadingCoins || !plans.length}
           >
-            {createMutation.isPending ? (
+            {isDeploying ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Deploying...</>
-            ) : !template.isFree && !hasEnoughBalance ? (
-              <><Lock className="h-4 w-4" /> Insufficient Balance</>
             ) : (
-              <><Zap className="h-4 w-4" /> Deploy Bot {!template.isFree && `- ${fmt(price, currency)}`}</>
+              <><Zap className="h-4 w-4" /> Choose a hosting plan</>
             )}
           </Button>
         </form>
       </div>
+      <Dialog open={isPlanDialogOpen} onOpenChange={setIsPlanDialogOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader><DialogTitle>Choose a hosting plan</DialogTitle><DialogDescription>Plans replace template fees. Coins are charged from your wallet when the bot is deployed.</DialogDescription></DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {plans.map((plan) => <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border p-4 text-left transition-colors ${selectedPlan?.id === plan.id ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-primary/40"}`}>
+              <span className="font-semibold">{plan.name}</span><span className="mt-1 block text-sm text-muted-foreground">{plan.days} days</span><span className="mt-3 flex items-center gap-1.5 text-primary"><Coins className="h-4 w-4" />{plan.coins} coins</span>
+            </button>)}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 p-3 text-sm"><span>{isLoadingCoins ? "Checking coin balance…" : `Your balance: ${coinBalance.toLocaleString()} coins`}</span><Link href="/wallet" className="text-primary underline-offset-4 hover:underline">Add coins</Link></div>
+          <DialogFooter><Button variant="outline" onClick={() => setIsPlanDialogOpen(false)}>Cancel</Button><Button disabled={!selectedPlan || isDeploying || isLoadingCoins} onClick={() => void confirmDeploy()}>{isDeploying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Deploy {selectedPlan ? `· ${selectedPlan.coins} coins` : ""}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

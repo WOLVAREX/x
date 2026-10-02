@@ -60,6 +60,7 @@ function StatusBadge({ status }: { status: string }) {
 function fmt(amount: number, currency = "KES") {
   return `${currency} ${(amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 }
+function fmtCoins(amount: number) { return `${amount.toLocaleString()} coins`; }
 
 function authHeader() {
   const token = localStorage.getItem("junex_token");
@@ -109,7 +110,7 @@ export default function WalletPage() {
 
   async function handleCardDeposit() {
     const amount = getAmount();
-    if (amount < 100) { toast({ title: "Enter a valid amount (min KES 1)", variant: "destructive" }); return; }
+    if (amount < 300) { toast({ title: "Minimum top-up is KES 3", variant: "destructive" }); return; }
     setIsProcessing(true);
     try {
       const res = await fetch(`${API_BASE}/api/wallet/deposit/card`, {
@@ -133,7 +134,7 @@ export default function WalletPage() {
           const vRes = await fetch(`${API_BASE}/api/wallet/verify/${tx.reference}`, { headers: authHeader() });
           const vData = await vRes.json();
           if (vData.status === "success") {
-            toast({ title: `Wallet topped up! New balance: ${fmt(vData.newBalance)}` });
+            toast({ title: `Wallet topped up! New balance: ${fmtCoins(vData.newBalance)}` });
             setStep("done");
             fetchWallet();
           } else {
@@ -152,7 +153,7 @@ export default function WalletPage() {
   async function handleStkPush() {
     if (!phone.trim()) { toast({ title: "Enter your M-Pesa number", variant: "destructive" }); return; }
     const amount = getAmount();
-    if (amount < 100) { toast({ title: "Enter a valid amount", variant: "destructive" }); return; }
+    if (amount < 300) { toast({ title: "Minimum top-up is KES 3", variant: "destructive" }); return; }
     setIsProcessing(true);
     try {
       const res = await fetch(`${API_BASE}/api/wallet/deposit/mpesa`, {
@@ -203,7 +204,7 @@ export default function WalletPage() {
       const res = await fetch(`${API_BASE}/api/wallet/verify/${reference}`, { headers: authHeader() });
       const d = await res.json();
       if (d.status === "success") {
-        toast({ title: `Wallet topped up! New balance: ${fmt(d.newBalance)}` });
+        toast({ title: `Wallet topped up! New balance: ${fmtCoins(d.newBalance)}` });
         setStep("done");
         fetchWallet();
       } else {
@@ -247,10 +248,10 @@ export default function WalletPage() {
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Available Balance</p>
                   <p className="text-4xl font-bold text-primary">
-                    {fmt(data?.balance ?? 0, data?.currency)}
+                    {fmtCoins(data?.balance ?? 0)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Add funds to deploy bots from our template library
+                    KES top-ups add 5 coins per KES 1. Hosting plans are paid in coins.
                   </p>
                 </div>
                 <div className="h-16 w-16 rounded-2xl bg-primary/20 flex items-center justify-center">

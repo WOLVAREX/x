@@ -18,6 +18,7 @@ const registerSchema = z.object({
   username: z.string().min(3, { message: "Username must be at least 3 characters" }),
   email: z.string().email({ message: "Invalid email address" }),
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
+  country: z.enum(["KE", "NG", "GH", "ZA", "CI", "OTHER"], { message: "Choose your country" }),
 });
 
 export default function Register() {
@@ -31,7 +32,7 @@ export default function Register() {
 
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { username: "", email: "", password: "" },
+    defaultValues: { username: "", email: "", password: "", country: "KE" },
   });
 
   const registerMutation = useRegister({
@@ -52,7 +53,7 @@ export default function Register() {
   });
 
   function onSubmit(values: z.infer<typeof registerSchema>) {
-    registerMutation.mutate({ data: values });
+    registerMutation.mutate({ data: values } as any);
   }
 
   return (
@@ -83,6 +84,27 @@ export default function Register() {
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="country"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Country</FormLabel>
+                      <FormControl>
+                        <select {...field} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          <option value="KE">Kenya — KES</option>
+                          <option value="NG">Nigeria — NGN</option>
+                          <option value="GH">Ghana — GHS</option>
+                          <option value="ZA">South Africa — ZAR</option>
+                          <option value="CI">Côte d’Ivoire — XOF</option>
+                          <option value="OTHER">Other countries — KES checkout</option>
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                      <p className="text-xs text-muted-foreground">All Paystack checkouts use KES. Your wallet earns 5 coins per KES 1.</p>
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={form.control}
                   name="username"

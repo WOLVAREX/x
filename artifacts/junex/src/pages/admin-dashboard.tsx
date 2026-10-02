@@ -312,6 +312,7 @@ export default function AdminDashboard() {
     { label: "View Deployments", icon: Eye, action: () => handleTabChange("deployments"), color: "text-blue-500" },
     { label: "Manage Users", icon: Users, action: () => handleTabChange("users"), color: "text-emerald-500" },
     { label: "Manage Team", icon: UserCircle2, href: "/admin/developers", color: "text-purple-400" },
+    { label: "Hosting Plans", icon: KeyRound, href: "/admin/plans", color: "text-cyan-400" },
     { label: "Platform Health", icon: Zap, action: () => handleTabChange("health"), color: "text-amber-500" },
   ];
 
@@ -350,7 +351,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {quickActions.map((item) => (
                 item.href ? (
                   <Link key={item.label} href={item.href}>
