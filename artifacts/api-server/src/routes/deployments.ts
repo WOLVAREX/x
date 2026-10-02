@@ -187,18 +187,28 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     let attempts = 0;
     const maxAttempts = 60; // 5 min timeout
 
-    while (buildStatus === "pending" && attempts < maxAttempts) {
+    while (["pending", "queued", "processing"].includes(buildStatus) && attempts < maxAttempts) {
       await new Promise(r => setTimeout(r, 5000));
       attempts++;
 
+      const [current] = await db.select({ status: deploymentsTable.status, archivedAt: deploymentsTable.archivedAt })
+        .from(deploymentsTable).where(eq(deploymentsTable.id, deploymentId));
+      if (!current || current.archivedAt || current.status === "online") return;
+
       const statusRes = await fetch(`${HEROKU_BASE}/apps/${appName}/builds/${buildId}`, {
         headers: await herokuHeaders(),
+        signal: AbortSignal.timeout(15_000),
       });
+      if (!statusRes.ok) {
+        const errorBody = await statusRes.json().catch(() => ({})) as any;
+        await appendLog(deploymentId, `Heroku build status check failed (${statusRes.status}): ${errorBody.message ?? "retrying"}`);
+        continue;
+      }
       const statusData = await statusRes.json() as any;
-      buildStatus = statusData.status ?? "pending";
+      buildStatus = typeof statusData.status === "string" ? statusData.status.toLowerCase() : "pending";
 
       if (attempts % 3 === 0) {
-        await appendLog(deploymentId, `Build in progress... (${attempts * 5}s elapsed)`);
+        await appendLog(deploymentId, `Heroku build ${buildStatus} (${attempts * 5}s elapsed)`);
       }
     }
 
@@ -337,6 +347,7 @@ router.get("/deployments/:id", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.get("/deployments/:id/logs", requireAuth, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
   const user = (req as any).user;
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -348,6 +359,53 @@ router.get("/deployments/:id/logs", requireAuth, async (req, res): Promise<void>
 
   if (!deployment) { res.status(404).json({ error: "Deployment not found" }); return; }
   res.json({ lines: (deployment.logs as string[]) ?? [], status: deployment.status });
+});
+
+router.get("/deployments/:id/heroku-status", requireAuth, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
+  const user = (req as any).user;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid deployment id" }); return; }
+  const [deployment] = await db.select().from(deploymentsTable)
+    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
+  if (!deployment) { res.status(404).json({ error: "Deployment not found" }); return; }
+  if (!deployment.herokuAppId) { res.status(409).json({ status: deployment.status, error: "Heroku app is not available yet" }); return; }
+  if (!await getHerokuKey()) { res.status(503).json({ status: deployment.status, error: "Heroku is not configured" }); return; }
+
+  try {
+    const headers = await herokuHeaders();
+    const [dynosResponse, buildsResponse] = await Promise.all([
+      fetch(`${HEROKU_BASE}/apps/${deployment.herokuAppId}/dynos`, { headers, signal: AbortSignal.timeout(10_000) }),
+      fetch(`${HEROKU_BASE}/apps/${deployment.herokuAppId}/builds`, { headers, signal: AbortSignal.timeout(10_000) }),
+    ]);
+    if (!dynosResponse.ok) {
+      const data = await dynosResponse.json().catch(() => ({})) as any;
+      res.status(dynosResponse.status === 404 ? 404 : 502).json({ status: deployment.status, error: data.message ?? "Could not read Heroku dyno status" });
+      return;
+    }
+    const dynos = await dynosResponse.json() as Array<{ id?: string; type?: string; state?: string; name?: string }>;
+    const builds = buildsResponse.ok ? await buildsResponse.json() as Array<{ id: string; status: string; created_at?: string }> : [];
+    const latestBuild = [...builds].sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())[0];
+    const dynoStates = dynos.map((dyno) => (dyno.state ?? "").toLowerCase());
+
+    let status = deployment.status;
+    if (dynoStates.includes("up")) status = "online";
+    else if (dynoStates.some((state) => ["starting", "restarting"].includes(state)) || ["pending", "queued", "processing"].includes((latestBuild?.status ?? "").toLowerCase())) status = "building";
+    else if (["failed", "errored", "canceled"].includes((latestBuild?.status ?? "").toLowerCase())) status = "error";
+    else if (deployment.status === "building" && latestBuild?.status?.toLowerCase() === "succeeded") status = "offline";
+
+    if (status !== deployment.status) {
+      const label = status === "online" ? "Heroku confirms the bot is running" : status === "error" ? "Heroku reports that the build failed" : status === "offline" ? "Heroku build finished, but no dyno is running" : "Heroku is starting the bot";
+      const existing = (deployment.logs as string[]) ?? [];
+      await db.update(deploymentsTable).set({ status, logs: [...existing, `${ts()} ${label}`] })
+        .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
+    }
+    res.json({ status, dynos: dynos.map(({ name, type, state }) => ({ name, type, state })), buildStatus: latestBuild?.status ?? null, checkedAt: new Date().toISOString() });
+  } catch (err) {
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    logger.warn({ err, deploymentId: id }, "Heroku status lookup failed");
+    res.status(timedOut ? 504 : 502).json({ status: deployment.status, error: timedOut ? "Heroku status check timed out" : "Could not contact Heroku" });
+  }
 });
 
 router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<void> => {
@@ -601,6 +659,7 @@ router.patch("/deployments/:id/env", requireAuth, async (req, res): Promise<void
 
 // ── Live logs from Heroku ─────────────────────────────────
 router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
   const user = (req as any).user;
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -621,12 +680,13 @@ router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promis
       method: "POST",
       headers: await herokuHeaders(),
       body: JSON.stringify({ lines: 100, tail: false }),
+      signal: AbortSignal.timeout(10_000),
     });
     const sessionData = await sessionRes.json() as any;
     if (!sessionRes.ok) { res.status(400).json({ error: sessionData.message ?? "Could not fetch logs" }); return; }
 
     // Fetch the actual log content
-    const logsRes = await fetch(sessionData.logplex_url);
+    const logsRes = await fetch(sessionData.logplex_url, { signal: AbortSignal.timeout(10_000) });
     const logsText = await logsRes.text();
     const lines = logsText.split("\n").filter(Boolean);
 
@@ -638,42 +698,6 @@ router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promis
 });
 
 // ── Live logs from Heroku ─────────────────────────────────
-router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promise<void> => {
-  const user = (req as any).user;
-  const id = parseInt(req.params.id as string, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-
-  const [deployment] = await db
-    .select()
-    .from(deploymentsTable)
-    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
-
-  if (!deployment) { res.status(404).json({ error: "Not found" }); return; }
-  if (!deployment.herokuAppId) { res.status(400).json({ error: "Bot not yet deployed to Heroku" }); return; }
-
-  if (!await getHerokuKey()) { res.status(500).json({ error: "Heroku not configured" }); return; }
-
-  try {
-    // Get a log session from Heroku
-    const sessionRes = await fetch(`${HEROKU_BASE}/apps/${deployment.herokuAppId}/log-sessions`, {
-      method: "POST",
-      headers: await herokuHeaders(),
-      body: JSON.stringify({ lines: 100, tail: false }),
-    });
-    const sessionData = await sessionRes.json() as any;
-    if (!sessionRes.ok) { res.status(400).json({ error: sessionData.message ?? "Could not fetch logs" }); return; }
-
-    // Fetch the actual log content
-    const logsRes = await fetch(sessionData.logplex_url);
-    const logsText = await logsRes.text();
-    const lines = logsText.split("\n").filter(Boolean);
-
-    res.json({ lines, herokuAppId: deployment.herokuAppId });
-  } catch (err) {
-    logger.error({ err }, "Heroku logs error");
-    res.status(500).json({ error: "Failed to fetch Heroku logs" });
-  }
-});
 export default router;
 
 

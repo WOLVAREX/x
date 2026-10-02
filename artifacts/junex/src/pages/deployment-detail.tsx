@@ -41,6 +41,7 @@ function StatusBadge({ status }: { status: string }) {
     offline:   "bg-slate-500/15 text-slate-400 border-slate-500/20",
     error:     "bg-red-500/15 text-red-400 border-red-500/20",
     building:  "bg-blue-500/15 text-blue-400 border-blue-500/20",
+    expired:   "bg-amber-500/15 text-amber-400 border-amber-500/20",
     suspended: "bg-red-500/15 text-red-400 border-red-500/20",
     queued:    "bg-amber-500/15 text-amber-400 border-amber-500/20",
   };
@@ -56,19 +57,23 @@ function StatusBadge({ status }: { status: string }) {
 
 function LogLine({ line }: { line: string }) {
   if (!line || line.trim() === "") return <div className="h-2" />;
-  const isError   = line.includes("ERROR") || line.includes("FATAL") || line.includes("error");
-  const isSuccess = line.includes("successful") || line.includes("succeeded") || line.includes("deployed") || line.includes("live");
-  const isWarning = line.includes("WARNING") || line.includes("warn");
-  const isDivider = line.includes("--");
+  const divider = line.match(/^--\s*(.*?)\s*--$/);
+  if (divider) return <div className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-slate-800" />{divider[1]}<span className="h-px flex-1 bg-slate-800" /></div>;
+  const timestamp = line.match(/^\[(\d{4}-\d\d-\d\dT[^\]]+)\]\s*/)?.[1];
+  const message = timestamp ? line.slice(line.indexOf("]") + 2) : line;
+  const isError   = /\b(ERROR|FATAL|FAILED)\b/i.test(message);
+  const isSuccess = /successful|succeeded|deployed|is running|bot is live/i.test(message);
+  const isWarning = /\bWARNING\b/i.test(message);
+  const time = timestamp ? new Date(timestamp) : null;
   return (
-    <div className={`font-mono text-xs leading-6 px-1 ${
-      isError ? "text-red-400" :
-      isSuccess ? "text-emerald-400 font-medium" :
-      isWarning ? "text-amber-400" :
-      isDivider ? "text-slate-500 italic" :
-      "text-slate-300"
-    }`}>
-      {line}
+    <div className="group flex gap-3 rounded-md px-2 py-1.5 hover:bg-white/[0.03]">
+      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-600 group-hover:bg-slate-400" />
+      {time && !Number.isNaN(time.getTime()) && <time className="w-[4.5rem] shrink-0 pt-0.5 font-mono text-[10px] tabular-nums text-slate-500">{format(time, "HH:mm:ss")}</time>}
+      <span className={`min-w-0 break-words font-mono text-xs leading-5 ${
+        isError ? "text-red-400" : isSuccess ? "font-medium text-emerald-400" : isWarning ? "text-amber-400" : "text-slate-300"
+      }`}>
+        {message}
+      </span>
     </div>
   );
 }
@@ -88,6 +93,7 @@ export default function DeploymentDetail() {
   const [newVal, setNewVal] = useState("");
   const [isSavingEnv, setIsSavingEnv] = useState(false);
   const [isRefreshingLogs, setIsRefreshingLogs] = useState(false);
+  const [herokuStatusError, setHerokuStatusError] = useState<string | null>(null);
 
   const { data: deployment, isLoading } = useGetDeployment(id);
 
@@ -96,30 +102,44 @@ export default function DeploymentDetail() {
     if (deployment?.status) setDeployStatus(deployment.status);
   }, [deployment]);
 
-  // Poll logs every 3s while building, every 30s when online
+  // Check Heroku's live dynos/build and refresh logs while a deployment is active.
   useEffect(() => {
     if (!id || isNaN(id)) return;
 
     async function fetchLogs() {
+      let liveStatus: string | undefined;
       try {
-        const res = await fetch(`${API_BASE}/api/deployments/${id}/logs`, { headers: authHeader() });
+        if (deployment?.herokuAppId) {
+          try {
+            const statusRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-status`, { headers: authHeader(), cache: "no-store" });
+            const statusData = await statusRes.json();
+            if (!statusRes.ok) throw new Error(statusData.error ?? "Could not read Heroku status");
+            liveStatus = statusData.status;
+            setHerokuStatusError(null);
+          } catch (error) {
+            setHerokuStatusError(error instanceof Error ? error.message : "Could not read Heroku status");
+          }
+        }
+
+        const res = await fetch(`${API_BASE}/api/deployments/${id}/logs`, { headers: authHeader(), cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
+        const status = liveStatus ?? data.status ?? "building";
+        setDeployStatus(status);
         const lines: string[] = data.lines ?? [];
-        setLogs(lines);
-        setDeployStatus(data.status ?? "building");
 
-        // Fetch live Heroku logs if online
-        if (data.status === "online") {
+        if (status === "online" && deployment?.herokuAppId) {
           try {
-            const hRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader() });
-            if (hRes.ok) {
-              const hData = await hRes.json();
-              if (hData.lines?.length > 0) {
-                setLogs([...lines, "", "-- Live Heroku Logs --", ...hData.lines]);
-              }
-            }
-          } catch {}
+            const hRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
+            const hData = await hRes.json();
+            if (!hRes.ok) throw new Error(hData.error ?? "Could not fetch Heroku logs");
+            setLogs(hData.lines?.length ? [...lines, "", "-- Heroku Runtime --", ...hData.lines] : lines);
+          } catch (error) {
+            setLogs(lines);
+            setHerokuStatusError(error instanceof Error ? error.message : "Could not fetch Heroku runtime logs");
+          }
+        } else {
+          setLogs(lines);
         }
       } catch {}
     }
@@ -128,7 +148,7 @@ export default function DeploymentDetail() {
     const isBuilding = deployStatus === "building";
     const interval = setInterval(fetchLogs, isBuilding ? 3000 : 30000);
     return () => clearInterval(interval);
-  }, [id, deployStatus]);
+  }, [id, deployStatus, deployment?.herokuAppId]);
 
   // Auto scroll
   useEffect(() => {
@@ -152,15 +172,21 @@ export default function DeploymentDetail() {
   async function handleRefreshLogs() {
     setIsRefreshingLogs(true);
     try {
-      const res = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader() });
-      if (res.ok) {
-        const data = await res.json();
-        const deployRes = await fetch(`${API_BASE}/api/deployments/${id}/logs`, { headers: authHeader() });
-        const deployData = await deployRes.json();
-        setLogs([...(deployData.lines ?? []), "", "-- Live Heroku Logs --", ...(data.lines ?? [])]);
-        toast({ title: "Logs refreshed" });
-      }
-    } catch { toast({ title: "Could not refresh logs", variant: "destructive" }); }
+      const statusRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-status`, { headers: authHeader(), cache: "no-store" });
+      const statusData = await statusRes.json();
+      if (statusRes.ok && statusData.status) setDeployStatus(statusData.status);
+      const deployRes = await fetch(`${API_BASE}/api/deployments/${id}/logs`, { headers: authHeader(), cache: "no-store" });
+      const deployData = await deployRes.json();
+      if (!deployRes.ok) throw new Error(deployData.error ?? "Could not read deployment events");
+      if (statusData.status === "online") {
+        const herokuRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
+        const herokuData = await herokuRes.json();
+        if (!herokuRes.ok) throw new Error(herokuData.error ?? "Could not read Heroku runtime logs");
+        setLogs(herokuData.lines?.length ? [...(deployData.lines ?? []), "", "-- Heroku Runtime --", ...herokuData.lines] : deployData.lines ?? []);
+      } else setLogs(deployData.lines ?? []);
+      setHerokuStatusError(null);
+      toast({ title: "Heroku status and logs refreshed" });
+    } catch (error) { toast({ title: "Could not refresh Heroku data", description: error instanceof Error ? error.message : "Try again shortly.", variant: "destructive" }); }
     finally { setIsRefreshingLogs(false); }
   }
 
@@ -287,8 +313,8 @@ export default function DeploymentDetail() {
               </TabsTrigger>
             </TabsList>
 
-            {!isBuilding && (
-              <div className="flex gap-2">
+            <div className="flex gap-2">
+              {!isBuilding && <>
                 {deployStatus === "offline" || deployStatus === "error" || deployStatus === "suspended" ? (
                   <Button size="sm" variant="outline" className="gap-1.5 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30"
                     disabled={startMutation.isPending} onClick={() => startMutation.mutate({ id })}>
@@ -304,38 +330,36 @@ export default function DeploymentDetail() {
                   disabled={restartMutation.isPending || deployStatus !== "online"} onClick={() => restartMutation.mutate({ id })}>
                   <RotateCcw className="h-3.5 w-3.5" /> Restart
                 </Button>
-              </div>
-            )}
+              </>}
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={handleRefreshLogs} disabled={isRefreshingLogs}>
+                <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingLogs ? "animate-spin" : ""}`} /> Check Heroku
+              </Button>
+            </div>
           </div>
 
           {/* ── Logs Tab ── */}
           <TabsContent value="logs" className="mt-4">
             <Card className="border-border/40">
-              <CardHeader className="py-3 px-4 border-b border-border/40 flex flex-row items-center gap-2 space-y-0">
-                <Terminal className="h-4 w-4 text-primary" />
-                <CardTitle className="text-sm font-medium flex-1">
-                  {isBuilding ? "Deployment Logs" : "Live Bot Logs"}
-                </CardTitle>
+              <CardHeader className="flex flex-row items-center gap-3 border-b border-border/40 px-4 py-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10"><Terminal className="h-4 w-4 text-primary" /></div>
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="text-sm font-medium">Deployment activity</CardTitle>
+                  <CardDescription className="mt-0.5 text-xs">JuneX setup events and live Heroku runtime output</CardDescription>
+                </div>
                 {isBuilding && (
-                  <span className="flex items-center gap-1.5 text-xs text-blue-400">
-                    <Loader2 className="h-3 w-3 animate-spin" /> streaming
+                  <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[11px] text-blue-300">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Checking Heroku
                   </span>
                 )}
-                {!isBuilding && (
-                  <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs text-muted-foreground"
-                    onClick={handleRefreshLogs} disabled={isRefreshingLogs}>
-                    <RefreshCw className={`h-3 w-3 ${isRefreshingLogs ? "animate-spin" : ""}`} />
-                    Refresh
-                  </Button>
-                )}
               </CardHeader>
+              {herokuStatusError && <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-300">Heroku status check: {herokuStatusError}</div>}
               <CardContent className="p-0">
-                <div className="bg-[#060a10] rounded-b-xl h-[60vh] relative overflow-hidden">
+                <div className="relative h-[60vh] overflow-hidden rounded-b-xl bg-[#080d14]">
                   <ScrollArea className="h-full w-full">
-                    <div className="p-5 space-y-0">
+                    <div className="space-y-0 p-4 sm:p-5">
                       {logs.length === 0 ? (
-                        <div className="flex items-center gap-2 text-slate-500 text-xs font-mono">
-                          <Loader2 className="h-3 w-3 animate-spin" /> Waiting for logs...
+                        <div className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] p-4 font-mono text-xs text-slate-400">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" /> Waiting for deployment activity…
                         </div>
                       ) : (
                         logs.map((line, i) => <LogLine key={i} line={line} />)
