@@ -54,6 +54,45 @@ router.get("/admin/users", requireAdmin, async (_req, res): Promise<void> => {
 });
 
 // ── Suspend user ──────────────────────────────────────────
+router.patch("/admin/users/:id/role", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  const role = req.body?.role;
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+  if (role !== "admin" && role !== "user") {
+    res.status(400).json({ error: "Role must be admin or user" });
+    return;
+  }
+
+  const requester = (req as typeof req & { user: { id: number } }).user;
+  if (requester.id === id && role !== "admin") {
+    res.status(400).json({ error: "You cannot remove your own admin access" });
+    return;
+  }
+
+  const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!target) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  if (target.role === "admin" && role === "user") {
+    const [adminCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(usersTable)
+      .where(eq(usersTable.role, "admin"));
+    if (adminCount.count <= 1) {
+      res.status(409).json({ error: "At least one administrator must remain" });
+      return;
+    }
+  }
+
+  const [updated] = await db.update(usersTable).set({ role }).where(eq(usersTable.id, id)).returning();
+  res.json({ id: updated.id, username: updated.username, email: updated.email, role: updated.role });
+});
+
 router.post("/admin/users/:id/suspend", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }

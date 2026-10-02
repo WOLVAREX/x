@@ -16,6 +16,7 @@ import TemplateDetail from "@/pages/template-detail";
 import DeploymentDetail from "@/pages/deployment-detail";
 import AdminDashboard from "@/pages/admin-dashboard";
 import AdminTemplateNew from "@/pages/admin-template-new";
+import AdminDevelopersPage from "@/pages/admin-developers";
 import OAuthCallback from "@/pages/oauth-callback";
 import WalletPage from "@/pages/wallet";
 import MyBotsPage from "@/pages/my-bots";
@@ -67,6 +68,9 @@ function Router() {
       </Route>
       <Route path="/admin/templates/new">
         <ProtectedRoute adminOnly><AdminTemplateNew /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/developers">
+        <ProtectedRoute adminOnly><AdminDevelopersPage /></ProtectedRoute>
       </Route>
 
       <Route component={NotFound} />
