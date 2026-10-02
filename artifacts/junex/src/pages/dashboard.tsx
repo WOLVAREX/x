@@ -42,6 +42,7 @@ function StatusBadge({ status }: { status: string }) {
     online:    { className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20", dot: "bg-emerald-400 animate-pulse" },
     offline:   { className: "bg-slate-500/15 text-slate-400 border-slate-500/20", dot: "bg-slate-400" },
     error:     { className: "bg-red-500/15 text-red-400 border-red-500/20", dot: "bg-red-400" },
+    failed:    { className: "bg-red-500/15 text-red-400 border-red-500/20", dot: "bg-red-400" },
     building:  { className: "bg-blue-500/15 text-blue-400 border-blue-500/20", dot: "" },
     queued:    { className: "bg-amber-500/15 text-amber-400 border-amber-500/20", dot: "bg-amber-400" },
     suspended: { className: "bg-red-500/15 text-red-400 border-red-500/20", dot: "bg-red-400" },
@@ -67,7 +68,7 @@ function StatusIcon({ status }: { status: string }) {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { data: summary, isLoading } = useGetDashboardSummary();
+  const { data: summary, isLoading } = useGetDashboardSummary({ query: { queryKey: getGetDashboardSummaryQueryKey(), refetchInterval: 30_000 } });
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
@@ -265,6 +266,18 @@ export default function Dashboard() {
                           </div>
                         </CardHeader>
 
+                        {deployment.herokuDeletedAt && (
+                          <CardContent className="pt-0">
+                            <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+                              <p className="font-semibold">Bot needs recovery</p>
+                              <p className="mt-1 text-amber-100/80">{deployment.failureReason ?? "The bot session failed"}. Its Heroku app was removed. Recover it to redeploy.</p>
+                              <Button asChild size="sm" variant="outline" className="mt-2 h-8 border-amber-500/40 text-amber-100 hover:bg-amber-500/15">
+                                <Link href={`/recover?appName=${encodeURIComponent(deployment.herokuAppId ?? deployment.botName)}`}>Recover bot</Link>
+                              </Button>
+                            </div>
+                          </CardContent>
+                        )}
+
                         <CardContent className="flex-1 px-5 pb-0">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Clock className="h-3 w-3" />
@@ -279,12 +292,12 @@ export default function Dashboard() {
                         </CardContent>
 
                         <div className="p-4 mt-4 border-t border-border/40 flex gap-2">
-                          {deployment.status === "offline" || deployment.status === "error" ? (
+                          {deployment.status === "offline" || deployment.status === "error" || deployment.status === "failed" ? (
                             <Button
                               size="sm"
                               variant="outline"
                               className="flex-1 gap-1.5 text-emerald-400 hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30"
-                              disabled={startMutation.isPending}
+                              disabled={startMutation.isPending || Boolean(deployment.herokuDeletedAt)}
                               onClick={() => startMutation.mutate({ id: deployment.id })}
                             >
                               <Play className="h-3.5 w-3.5" /> Start

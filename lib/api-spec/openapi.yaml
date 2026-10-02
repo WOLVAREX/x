@@ -809,7 +809,13 @@ components:
           type: ["string", "null"]
         status:
           type: string
-          enum: [queued, building, online, offline, error, suspended]
+          enum: [queued, building, online, offline, error, failed, suspended]
+        failedAt:
+          type: [string, "null"]
+        failureReason:
+          type: [string, "null"]
+        herokuDeletedAt:
+          type: [string, "null"]
         createdAt:
           type: string
         updatedAt:

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowLeft, Bot, Check, ChevronDown, Clock, Loader2, RotateCcw, Search, Settings2, WandSparkles } from "lucide-react";
 import { Layout } from "@/components/layout";
@@ -21,7 +21,7 @@ const authHeaders = () => ({ "Content-Type": "application/json", Authorization: 
 export default function RecoverPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const [appName, setAppName] = useState("");
+  const [appName, setAppName] = useState(() => new URLSearchParams(window.location.search).get("appName") ?? "");
   const [recovery, setRecovery] = useState<RecoveryInfo | null>(null);
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [sourceId, setSourceId] = useState("");
@@ -50,6 +50,11 @@ export default function RecoverPage() {
     } catch (error) { toast({ title: "Bot lookup failed", description: error instanceof Error ? error.message : "Check the bot name and try again.", variant: "destructive" }); }
     finally { setIsLookingUp(false); }
   }
+
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("appName")) return;
+    void lookup({ preventDefault() {} } as React.FormEvent);
+  }, []);
 
   async function chooseSource(value: string) {
     setSourceId(value);

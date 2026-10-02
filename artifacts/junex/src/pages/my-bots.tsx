@@ -31,6 +31,7 @@ function StatusBadge({ status }: { status: string }) {
     online:    { cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20", icon: <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" /> },
     offline:   { cls: "bg-slate-500/15 text-slate-400 border-slate-500/20", icon: <XCircle className="h-3 w-3" /> },
     error:     { cls: "bg-red-500/15 text-red-400 border-red-500/20", icon: <AlertCircle className="h-3 w-3" /> },
+    failed:    { cls: "bg-red-500/15 text-red-400 border-red-500/20", icon: <AlertCircle className="h-3 w-3" /> },
     building:  { cls: "bg-blue-500/15 text-blue-400 border-blue-500/20", icon: <Loader2 className="h-3 w-3 animate-spin" /> },
     suspended: { cls: "bg-red-500/15 text-red-400 border-red-500/20", icon: <XCircle className="h-3 w-3" /> },
     queued:    { cls: "bg-amber-500/15 text-amber-400 border-amber-500/20", icon: <Clock className="h-3 w-3" /> },
@@ -51,7 +52,7 @@ export default function MyBotsPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; botName: string } | null>(null);
 
   const { data: deployments, isLoading, isError, error, refetch } = useListDeployments({
-    query: { queryKey: getListDeploymentsQueryKey(), refetchInterval: (query) => query.state.data?.some((bot) => bot.status === "building" || bot.status === "queued") ? 5_000 : false },
+    query: { queryKey: getListDeploymentsQueryKey(), refetchInterval: (query) => query.state.data?.some((bot) => bot.status === "building" || bot.status === "queued") ? 5_000 : 30_000 },
     request: { cache: "no-store" },
   });
 
@@ -160,8 +161,24 @@ export default function MyBotsPage() {
                         <p className="text-xs text-muted-foreground truncate">{dep.templateName}</p>
                       </div>
                     </div>
-                    <StatusBadge status={dep.status} />
+                  <StatusBadge status={dep.status} />
                   </div>
+
+                  {dep.herokuDeletedAt && (
+                    <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+                      <p className="font-semibold">Bot needs recovery</p>
+                      <p className="mt-1 text-amber-100/80">{dep.failureReason ?? "The bot session failed"}. Its Heroku app was removed to stop resource usage. Recover it to redeploy.</p>
+                      <Button asChild size="sm" variant="outline" className="mt-2 h-8 border-amber-500/40 text-amber-100 hover:bg-amber-500/15">
+                        <Link href={`/recover?appName=${encodeURIComponent(dep.herokuAppId ?? dep.botName)}`}>Recover bot</Link>
+                      </Button>
+                    </div>
+                  )}
+                  {dep.status === "failed" && !dep.herokuDeletedAt && (
+                    <div role="status" className="rounded-lg border border-red-500/25 bg-red-500/5 p-3 text-xs text-red-200">
+                      <p className="font-semibold">Bot session failed</p>
+                      <p className="mt-1 text-red-200/80">{dep.failureReason ?? "The bot is not healthy"}. J.H.P will remove its Heroku app if it stays failed for ten minutes.</p>
+                    </div>
+                  )}
 
                   {/* Meta */}
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -189,8 +206,8 @@ export default function MyBotsPage() {
                         <Button size="sm" variant="outline" className="flex-1 gap-1.5"><MoreHorizontal className="h-4 w-4" /> More</Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48">
-                        {dep.status === "offline" || dep.status === "error" ? (
-                          <DropdownMenuItem disabled={startMutation.isPending} onSelect={() => startMutation.mutate({ id: dep.id })}><Play /> Start bot</DropdownMenuItem>
+                        {dep.status === "offline" || dep.status === "error" || dep.status === "failed" ? (
+                          <DropdownMenuItem disabled={startMutation.isPending || Boolean(dep.herokuDeletedAt)} onSelect={() => startMutation.mutate({ id: dep.id })}><Play /> Start bot</DropdownMenuItem>
                         ) : (
                           <DropdownMenuItem disabled={stopMutation.isPending || dep.status !== "online"} onSelect={() => stopMutation.mutate({ id: dep.id })}><Square /> Stop bot</DropdownMenuItem>
                         )}

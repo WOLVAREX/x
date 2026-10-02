@@ -225,7 +225,10 @@ export const ListDeploymentsResponseItem = zod.object({
   "templateName": zod.string(),
   "botName": zod.string(),
   "herokuAppId": zod.string().nullish(),
-  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
+  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'failed', 'suspended']),
+  "failedAt": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "herokuDeletedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "templateThumbnail": zod.string().nullish(),
@@ -258,7 +261,10 @@ export const GetDeploymentResponse = zod.object({
   "templateName": zod.string(),
   "botName": zod.string(),
   "herokuAppId": zod.string().nullish(),
-  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
+  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'failed', 'suspended']),
+  "failedAt": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "herokuDeletedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "templateThumbnail": zod.string().nullish(),
@@ -288,7 +294,10 @@ export const StartDeploymentResponse = zod.object({
   "templateName": zod.string(),
   "botName": zod.string(),
   "herokuAppId": zod.string().nullish(),
-  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
+  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'failed', 'suspended']),
+  "failedAt": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "herokuDeletedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "templateThumbnail": zod.string().nullish(),
@@ -310,7 +319,10 @@ export const StopDeploymentResponse = zod.object({
   "templateName": zod.string(),
   "botName": zod.string(),
   "herokuAppId": zod.string().nullish(),
-  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
+  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'failed', 'suspended']),
+  "failedAt": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "herokuDeletedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "templateThumbnail": zod.string().nullish(),
@@ -332,7 +344,10 @@ export const RestartDeploymentResponse = zod.object({
   "templateName": zod.string(),
   "botName": zod.string(),
   "herokuAppId": zod.string().nullish(),
-  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
+  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'failed', 'suspended']),
+  "failedAt": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "herokuDeletedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "templateThumbnail": zod.string().nullish(),
@@ -370,7 +385,10 @@ export const UpdateDeploymentEnvResponse = zod.object({
   "templateName": zod.string(),
   "botName": zod.string(),
   "herokuAppId": zod.string().nullish(),
-  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
+  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'failed', 'suspended']),
+  "failedAt": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "herokuDeletedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "templateThumbnail": zod.string().nullish(),
@@ -393,7 +411,10 @@ export const GetDashboardSummaryResponse = zod.object({
   "templateName": zod.string(),
   "botName": zod.string(),
   "herokuAppId": zod.string().nullish(),
-  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
+  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'failed', 'suspended']),
+  "failedAt": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "herokuDeletedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "templateThumbnail": zod.string().nullish(),
@@ -427,6 +448,25 @@ export const ListAdminUsersResponse = zod.array(ListAdminUsersResponseItem)
 
 
 /**
+ * @summary Update a user role (admin only)
+ */
+export const UpdateAdminUserRoleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateAdminUserRoleBody = zod.object({
+  "role": zod.enum(['user', 'admin'])
+})
+
+export const UpdateAdminUserRoleResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['user', 'admin'])
+})
+
+
+/**
  * @summary List all deployments (admin only)
  */
 export const ListAdminDeploymentsResponseItem = zod.object({
@@ -436,7 +476,10 @@ export const ListAdminDeploymentsResponseItem = zod.object({
   "templateName": zod.string(),
   "botName": zod.string(),
   "herokuAppId": zod.string().nullish(),
-  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
+  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'failed', 'suspended']),
+  "failedAt": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "herokuDeletedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "templateThumbnail": zod.string().nullish(),
@@ -480,7 +523,10 @@ export const SuspendDeploymentResponse = zod.object({
   "templateName": zod.string(),
   "botName": zod.string(),
   "herokuAppId": zod.string().nullish(),
-  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'suspended']),
+  "status": zod.enum(['queued', 'building', 'online', 'offline', 'error', 'failed', 'suspended']),
+  "failedAt": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "herokuDeletedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional(),
   "templateThumbnail": zod.string().nullish(),

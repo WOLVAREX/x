@@ -281,7 +281,7 @@ router.get("/admin/health", requireAdmin, async (_req, res): Promise<void> => {
 
   const onlineCount = deployments.filter(d => d.status === "online").length;
   const offlineCount = deployments.filter(d => d.status === "offline").length;
-  const errorCount = deployments.filter(d => d.status === "error").length;
+  const errorCount = deployments.filter(d => d.status === "error" || d.status === "failed").length;
   const buildingCount = deployments.filter(d => d.status === "building").length;
   const suspendedCount = deployments.filter(d => d.status === "suspended").length;
 

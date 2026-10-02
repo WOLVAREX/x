@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { loadSettingsFromDb } from "./lib/settings";
 import { startPlanExpirationMonitor } from "./lib/plan-expiration";
+import { startBotHealthMonitor } from "./lib/bot-health-monitor";
 
 const rawPort = process.env["PORT"];
 
@@ -33,5 +34,6 @@ loadSettingsFromDb().then(() => {
     }
     logger.info({ host, port }, "Server listening");
     startPlanExpirationMonitor();
+    startBotHealthMonitor();
   });
 });

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, deploymentsTable, templatesTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -12,7 +12,7 @@ router.get("/dashboard/summary", requireAuth, async (req, res): Promise<void> =>
     .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
-    .where(eq(deploymentsTable.userId, user.id))
+    .where(and(eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)))
     .orderBy(deploymentsTable.createdAt);
 
   const deployments = rows.map(r => ({
@@ -24,13 +24,16 @@ router.get("/dashboard/summary", requireAuth, async (req, res): Promise<void> =>
     botName: r.deployment.botName,
     herokuAppId: r.deployment.herokuAppId ?? null,
     status: r.deployment.status,
+    failedAt: r.deployment.failedAt,
+    failureReason: r.deployment.failureReason,
+    herokuDeletedAt: r.deployment.herokuDeletedAt,
     createdAt: r.deployment.createdAt,
     updatedAt: r.deployment.updatedAt,
   }));
 
   const onlineCount = deployments.filter(d => d.status === "online").length;
   const offlineCount = deployments.filter(d => d.status === "offline").length;
-  const errorCount = deployments.filter(d => d.status === "error").length;
+  const errorCount = deployments.filter(d => d.status === "error" || d.status === "failed").length;
 
   res.json({
     totalDeployments: deployments.length,

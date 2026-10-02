@@ -17,6 +17,12 @@ export interface Deployment {
   /** @nullable */
   herokuAppId?: string | null;
   status: DeploymentStatus;
+  /** @nullable */
+  failedAt?: string | null;
+  /** @nullable */
+  failureReason?: string | null;
+  /** @nullable */
+  herokuDeletedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
   /** @nullable */

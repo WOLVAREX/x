@@ -15,5 +15,6 @@ export const DeploymentStatus = {
   online: 'online',
   offline: 'offline',
   error: 'error',
+  failed: 'failed',
   suspended: 'suspended',
 } as const;

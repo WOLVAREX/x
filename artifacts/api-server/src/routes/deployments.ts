@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db, deploymentsTable, templatesTable, usersTable, coinTransactionsTable } from "@workspace/db";
-import { eq, and, isNull, isNotNull, gte, lte, sql } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, gte, lte, or, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { getSetting } from "../lib/settings";
 import { findPlan } from "../lib/plans";
+import { getBotHealth } from "../lib/bot-health";
 
 const router: IRouter = Router();
 
@@ -56,6 +57,9 @@ function formatDeployment(d: typeof deploymentsTable.$inferSelect, templateName:
     herokuAppId: d.herokuAppId ?? null,
     appName: d.herokuAppId ?? null,
     status: d.status,
+    failedAt: d.failedAt ?? null,
+    failureReason: d.failureReason ?? null,
+    herokuDeletedAt: d.herokuDeletedAt ?? null,
     planId: d.planId ?? null,
     expiresAt: d.expiresAt ?? null,
     daysLeft: d.expiresAt ? Math.max(0, Math.ceil((d.expiresAt.getTime() - Date.now()) / 86_400_000)) : null,
@@ -386,37 +390,27 @@ router.get("/deployments/:id/heroku-status", requireAuth, async (req, res): Prom
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
   if (!deployment) { res.status(404).json({ error: "Deployment not found" }); return; }
   if (!deployment.herokuAppId) { res.status(409).json({ status: deployment.status, error: "Heroku app is not available yet" }); return; }
+  if (deployment.herokuDeletedAt) {
+    res.json({ status: "failed", failureReason: deployment.failureReason, failedAt: deployment.failedAt, herokuDeletedAt: deployment.herokuDeletedAt, dynos: [], buildStatus: null, checkedAt: new Date().toISOString() });
+    return;
+  }
   if (!await getHerokuKey()) { res.status(503).json({ status: deployment.status, error: "Heroku is not configured" }); return; }
 
   try {
-    const headers = await herokuHeaders();
-    const [dynosResponse, buildsResponse] = await Promise.all([
-      fetch(`${HEROKU_BASE}/apps/${deployment.herokuAppId}/dynos`, { headers, signal: AbortSignal.timeout(10_000) }),
-      fetch(`${HEROKU_BASE}/apps/${deployment.herokuAppId}/builds`, { headers, signal: AbortSignal.timeout(10_000) }),
-    ]);
-    if (!dynosResponse.ok) {
-      const data = await dynosResponse.json().catch(() => ({})) as any;
-      res.status(dynosResponse.status === 404 ? 404 : 502).json({ status: deployment.status, error: data.message ?? "Could not read Heroku dyno status" });
-      return;
+    const health = await getBotHealth(deployment);
+    const now = new Date();
+    const failedAt = health.status === "failed" ? deployment.failedAt ?? now : null;
+    const failureReason = health.status === "failed" ? health.failureReason : null;
+    const changed = health.status !== deployment.status || failureReason !== deployment.failureReason;
+    const logs = (deployment.logs as string[]) ?? [];
+    if (changed || health.herokuAppMissing || failedAt?.getTime() !== deployment.failedAt?.getTime()) {
+      await db.update(deploymentsTable).set({
+        status: health.status, failedAt, failureReason,
+        ...(health.herokuAppMissing ? { herokuDeletedAt: now } : {}),
+        ...(changed ? { logs: [...logs, `${ts()} ${health.status === "failed" ? `Bot failed: ${failureReason}` : `Bot status changed to ${health.status}`}`] } : {}),
+      }).where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
     }
-    const dynos = await dynosResponse.json() as Array<{ id?: string; type?: string; state?: string; name?: string }>;
-    const builds = buildsResponse.ok ? await buildsResponse.json() as Array<{ id: string; status: string; created_at?: string }> : [];
-    const latestBuild = [...builds].sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())[0];
-    const dynoStates = dynos.map((dyno) => (dyno.state ?? "").toLowerCase());
-
-    let status = deployment.status;
-    if (dynoStates.includes("up")) status = "online";
-    else if (dynoStates.some((state) => ["starting", "restarting"].includes(state)) || ["pending", "queued", "processing"].includes((latestBuild?.status ?? "").toLowerCase())) status = "building";
-    else if (["failed", "errored", "canceled"].includes((latestBuild?.status ?? "").toLowerCase())) status = "error";
-    else if (deployment.status === "building" && latestBuild?.status?.toLowerCase() === "succeeded") status = "offline";
-
-    if (status !== deployment.status) {
-      const label = status === "online" ? "Heroku confirms the bot is running" : status === "error" ? "Heroku reports that the build failed" : status === "offline" ? "Heroku build finished, but no dyno is running" : "Heroku is starting the bot";
-      const existing = (deployment.logs as string[]) ?? [];
-      await db.update(deploymentsTable).set({ status, logs: [...existing, `${ts()} ${label}`] })
-        .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
-    }
-    res.json({ status, dynos: dynos.map(({ name, type, state }) => ({ name, type, state })), buildStatus: latestBuild?.status ?? null, checkedAt: new Date().toISOString() });
+    res.json({ ...health, failedAt, failureReason, herokuDeletedAt: health.herokuAppMissing ? now : deployment.herokuDeletedAt, checkedAt: now.toISOString() });
   } catch (err) {
     const timedOut = err instanceof Error && err.name === "TimeoutError";
     logger.warn({ err, deploymentId: id }, "Heroku status lookup failed");
@@ -436,6 +430,7 @@ router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<voi
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (row.deployment.herokuDeletedAt) { res.status(409).json({ error: "This Heroku app was removed. Recover the bot to deploy it again.", recover: true }); return; }
 
   if (row.deployment.expiresAt && row.deployment.expiresAt <= new Date()) { res.status(402).json({ error: "Hosting plan expired. Choose a new plan from the recovery page.", recover: true }); return; }
 
@@ -450,7 +445,7 @@ router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<voi
 
   const logs = (row.deployment.logs as string[]) ?? [];
   const [updated] = await db.update(deploymentsTable)
-    .set({ status: "online", logs: [...logs, `${ts()} Bot started`] })
+    .set({ status: "building", failedAt: null, failureReason: null, logs: [...logs, `${ts()} Bot start requested`] })
     .where(eq(deploymentsTable.id, id)).returning();
 
   res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
@@ -475,7 +470,7 @@ router.post("/deployments/:id/stop", requireAuth, async (req, res): Promise<void
 
   const logs = (row.deployment.logs as string[]) ?? [];
   const [updated] = await db.update(deploymentsTable)
-    .set({ status: "offline", logs: [...logs, `${ts()} Bot stopped`] })
+    .set({ status: "offline", failedAt: null, failureReason: null, logs: [...logs, `${ts()} Bot stopped`] })
     .where(eq(deploymentsTable.id, id)).returning();
 
   res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
@@ -493,6 +488,7 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (row.deployment.herokuDeletedAt) { res.status(409).json({ error: "This Heroku app was removed. Recover the bot to deploy it again.", recover: true }); return; }
 
   if (row.deployment.expiresAt && row.deployment.expiresAt <= new Date()) { res.status(402).json({ error: "Hosting plan expired. Choose a new plan from the recovery page.", recover: true }); return; }
 
@@ -506,7 +502,7 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
 
   const logs = (row.deployment.logs as string[]) ?? [];
   const [updated] = await db.update(deploymentsTable)
-    .set({ status: "online", logs: [...logs, `${ts()} Bot restarted`] })
+    .set({ status: "building", failedAt: null, failureReason: null, logs: [...logs, `${ts()} Bot restart requested`] })
     .where(eq(deploymentsTable.id, id)).returning();
 
   res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
@@ -565,6 +561,21 @@ async function findArchivedBot(userId: number, appName: string, botName: string)
   return byBotName;
 }
 
+async function findAutoDeletedBot(userId: number, appName: string, botName: string) {
+  const scope = and(eq(deploymentsTable.userId, userId), isNull(deploymentsTable.archivedAt), isNotNull(deploymentsTable.herokuDeletedAt));
+  const [byAppName] = await db.select({ deployment: deploymentsTable, template: templatesTable })
+    .from(deploymentsTable).innerJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
+    .where(and(scope, eq(deploymentsTable.herokuAppId, appName)));
+  if (byAppName) return byAppName;
+  const normalizedBotName = botName.trim().toLowerCase();
+  if (!normalizedBotName) return undefined;
+  const [byBotName] = await db.select({ deployment: deploymentsTable, template: templatesTable })
+    .from(deploymentsTable).innerJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
+    .where(and(scope, sql`lower(trim(${deploymentsTable.botName})) = ${normalizedBotName}`))
+    .orderBy(sql`${deploymentsTable.herokuDeletedAt} DESC`).limit(1);
+  return byBotName;
+}
+
 async function findActiveBot(userId: number, appName: string, botName: string) {
   const scope = and(eq(deploymentsTable.userId, userId), isNull(deploymentsTable.archivedAt));
   const [byAppName] = await db.select({ id: deploymentsTable.id })
@@ -601,7 +612,7 @@ router.get("/recovery/lookup", requireAuth, async (req, res): Promise<void> => {
   const identifier = typeof req.query.appName === "string" ? req.query.appName.trim() : "";
   const appName = normalizeAppName(identifier);
   if (!identifier) { res.status(400).json({ error: "Enter the bot name or app name" }); return; }
-  const row = await findArchivedBot(user.id, appName, identifier);
+  const row = await findArchivedBot(user.id, appName, identifier) ?? await findAutoDeletedBot(user.id, appName, identifier);
   if (!row) {
     const active = await findActiveBot(user.id, appName, identifier);
     if (active) { res.status(409).json({ error: "This bot is still deployed. Delete it from My Bots first, then enter its bot name here to recover it." }); return; }
@@ -625,7 +636,7 @@ router.post("/recovery", requireAuth, async (req, res): Promise<void> => {
   const identifier = typeof req.body?.appName === "string" ? req.body.appName.trim() : "";
   const normalizedAppName = normalizeAppName(identifier);
   if (!identifier) { res.status(400).json({ error: "Bot name or app name is required" }); return; }
-  const row = await findArchivedBot(user.id, normalizedAppName, identifier);
+  const row = await findArchivedBot(user.id, normalizedAppName, identifier) ?? await findAutoDeletedBot(user.id, normalizedAppName, identifier);
   if (!row) { res.status(404).json({ error: "Archived bot not found" }); return; }
   const appName = row.deployment.herokuAppId ?? sanitizeAppName(row.deployment.botName, row.deployment.id);
   if (!(await getHerokuKey())) { res.status(503).json({ error: "Heroku is not configured" }); return; }
@@ -658,9 +669,10 @@ router.post("/recovery", requireAuth, async (req, res): Promise<void> => {
       await tx.insert(coinTransactionsTable).values({ userId: user.id, type: "debit", amount: plan!.coins, reference: `RECOVER-${row.deployment.id}-${Date.now()}`, description: `${plan!.name} recovery plan for ${row.deployment.botName}` });
     }
     const [updated] = await tx.update(deploymentsTable).set({
-      status: "building", envVars, archivedAt: null, expiresAt, planId: plan?.id ?? row.deployment.planId,
+      status: "building", envVars, archivedAt: null, failedAt: null, failureReason: null, herokuDeletedAt: null,
+      expiresAt, planId: plan?.id ?? row.deployment.planId,
       logs: [...((row.deployment.logs as string[]) ?? []), `${ts()} Recovery started`, `${ts()} Reusing app name ${appName}`],
-    }).where(and(eq(deploymentsTable.id, row.deployment.id), isNotNull(deploymentsTable.archivedAt))).returning();
+    }).where(and(eq(deploymentsTable.id, row.deployment.id), or(isNotNull(deploymentsTable.archivedAt), isNotNull(deploymentsTable.herokuDeletedAt)))).returning();
     return updated;
   });
   if (!result) { res.status(402).json({ error: "Not enough coins to renew this bot", requiredCoins: plan?.coins, balance: user.coinBalance }); return; }

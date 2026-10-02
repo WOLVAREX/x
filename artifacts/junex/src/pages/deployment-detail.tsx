@@ -40,6 +40,7 @@ function StatusBadge({ status }: { status: string }) {
     online:    "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
     offline:   "bg-slate-500/15 text-slate-400 border-slate-500/20",
     error:     "bg-red-500/15 text-red-400 border-red-500/20",
+    failed:    "bg-red-500/15 text-red-400 border-red-500/20",
     building:  "bg-blue-500/15 text-blue-400 border-blue-500/20",
     expired:   "bg-amber-500/15 text-amber-400 border-amber-500/20",
     suspended: "bg-red-500/15 text-red-400 border-red-500/20",
@@ -148,12 +149,16 @@ export default function DeploymentDetail() {
   const [isSavingEnv, setIsSavingEnv] = useState(false);
   const [isRefreshingLogs, setIsRefreshingLogs] = useState(false);
   const [herokuStatusError, setHerokuStatusError] = useState<string | null>(null);
+  const [failureReason, setFailureReason] = useState<string | null>(null);
+  const [herokuDeletedAt, setHerokuDeletedAt] = useState<string | null>(null);
 
   const { data: deployment, isLoading } = useGetDeployment(id);
 
   useEffect(() => {
     if (deployment?.envVars) setEnvVars(deployment.envVars as Record<string, string>);
     if (deployment?.status) setDeployStatus(deployment.status);
+    setFailureReason(deployment?.failureReason ?? null);
+    setHerokuDeletedAt(deployment?.herokuDeletedAt ?? null);
   }, [deployment]);
 
   // Check Heroku's live dynos/build and refresh logs while a deployment is active.
@@ -169,6 +174,8 @@ export default function DeploymentDetail() {
             const statusData = await statusRes.json();
             if (!statusRes.ok) throw new Error(statusData.error ?? "Could not read Heroku status");
             liveStatus = statusData.status;
+            setFailureReason(statusData.failureReason ?? null);
+            setHerokuDeletedAt(statusData.herokuDeletedAt ?? null);
             setHerokuStatusError(null);
           } catch (error) {
             setHerokuStatusError(error instanceof Error ? error.message : "Could not read Heroku status");
@@ -182,7 +189,7 @@ export default function DeploymentDetail() {
         setDeployStatus(status);
         const lines: string[] = data.lines ?? [];
 
-        if (status === "online" && deployment?.herokuAppId) {
+        if ((status === "online" || status === "failed") && deployment?.herokuAppId && !herokuDeletedAt) {
           try {
             const hRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
             const hData = await hRes.json();
@@ -202,7 +209,7 @@ export default function DeploymentDetail() {
     const isBuilding = deployStatus === "building";
     const interval = setInterval(fetchLogs, isBuilding ? 3000 : 30000);
     return () => clearInterval(interval);
-  }, [id, deployStatus, deployment?.herokuAppId]);
+  }, [id, deployStatus, deployment?.herokuAppId, herokuDeletedAt]);
 
   // Auto scroll
   useEffect(() => {
@@ -229,10 +236,14 @@ export default function DeploymentDetail() {
       const statusRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-status`, { headers: authHeader(), cache: "no-store" });
       const statusData = await statusRes.json();
       if (statusRes.ok && statusData.status) setDeployStatus(statusData.status);
+      if (statusRes.ok) {
+        setFailureReason(statusData.failureReason ?? null);
+        setHerokuDeletedAt(statusData.herokuDeletedAt ?? null);
+      }
       const deployRes = await fetch(`${API_BASE}/api/deployments/${id}/logs`, { headers: authHeader(), cache: "no-store" });
       const deployData = await deployRes.json();
       if (!deployRes.ok) throw new Error(deployData.error ?? "Could not read deployment events");
-      if (statusData.status === "online") {
+      if ((statusData.status === "online" || statusData.status === "failed") && !statusData.herokuDeletedAt) {
         const herokuRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
         const herokuData = await herokuRes.json();
         if (!herokuRes.ok) throw new Error(herokuData.error ?? "Could not read Heroku runtime logs");
@@ -342,17 +353,23 @@ export default function DeploymentDetail() {
         )}
 
         {/* Error banner */}
-        {deployStatus === "error" && (
+        {(deployStatus === "error" || deployStatus === "failed") && (
           <div className="flex items-center gap-3 p-4 rounded-xl border border-red-500/30 bg-red-500/5">
             <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-red-400">Deployment failed</p>
-              <p className="text-xs text-muted-foreground">Check the logs below. You can edit your configuration and restart.</p>
+              <p className="text-sm font-medium text-red-400">{herokuDeletedAt ? "Bot failed and app removed" : "Bot failed"}</p>
+              <p className="text-xs text-muted-foreground">{failureReason ?? "Check the bot logs and configuration."}</p>
             </div>
-            <Button size="sm" variant="outline" className="gap-1.5 flex-shrink-0 border-red-500/30 text-red-400 hover:bg-red-500/10"
-              onClick={() => startMutation.mutate({ id })}>
-              <Play className="h-3.5 w-3.5" /> Retry
-            </Button>
+            {herokuDeletedAt ? (
+              <Button size="sm" variant="outline" className="gap-1.5 flex-shrink-0 border-amber-500/30 text-amber-300 hover:bg-amber-500/10" asChild>
+                <Link href={`/recover?appName=${encodeURIComponent(deployment.herokuAppId ?? deployment.botName)}`}>Recover bot</Link>
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" className="gap-1.5 flex-shrink-0 border-red-500/30 text-red-400 hover:bg-red-500/10"
+                onClick={() => startMutation.mutate({ id })}>
+                <Play className="h-3.5 w-3.5" /> Retry
+              </Button>
+            )}
           </div>
         )}
 
@@ -369,9 +386,9 @@ export default function DeploymentDetail() {
 
             <div className="flex gap-2">
               {!isBuilding && <>
-                {deployStatus === "offline" || deployStatus === "error" || deployStatus === "suspended" ? (
+                {deployStatus === "offline" || deployStatus === "error" || deployStatus === "failed" || deployStatus === "suspended" ? (
                   <Button size="sm" variant="outline" className="gap-1.5 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30"
-                    disabled={startMutation.isPending} onClick={() => startMutation.mutate({ id })}>
+                    disabled={startMutation.isPending || Boolean(herokuDeletedAt)} onClick={() => startMutation.mutate({ id })}>
                     <Play className="h-3.5 w-3.5" /> Start
                   </Button>
                 ) : (
