@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Layout } from "@/components/layout";
@@ -106,6 +106,54 @@ export default function AdminDashboard() {
   const [herokuKey, setHerokuKey] = useState("");
   const [herokuKeyPreview, setHerokuKeyPreview] = useState<string | null>(null);
   const [isSavingHerokuKey, setIsSavingHerokuKey] = useState(false);
+  const [herokuTeamKey, setHerokuTeamKey] = useState("");
+  const [herokuTeams, setHerokuTeams] = useState<Array<{ name: string; role: string | null }>>([]);
+  const [selectedHerokuTeam, setSelectedHerokuTeam] = useState("");
+  const [savedHerokuTeam, setSavedHerokuTeam] = useState<string | null>(null);
+  const [herokuTeamPreview, setHerokuTeamPreview] = useState<string | null>(null);
+  const [teamLookupError, setTeamLookupError] = useState<string | null>(null);
+  const [isLoadingHerokuTeams, setIsLoadingHerokuTeams] = useState(false);
+  const [isSavingHerokuTeam, setIsSavingHerokuTeam] = useState(false);
+
+  useEffect(() => {
+    if (herokuTeamKey.trim().length < 10) {
+      setHerokuTeams([]);
+      setSelectedHerokuTeam("");
+      setTeamLookupError(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setIsLoadingHerokuTeams(true);
+      setTeamLookupError(null);
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/settings/heroku/teams`, {
+          method: "POST",
+          headers: authHeader(),
+          body: JSON.stringify({ apiKey: herokuTeamKey.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not load teams");
+        if (!cancelled) {
+          setHerokuTeams(data.teams ?? []);
+          setSelectedHerokuTeam((current) => data.teams?.some((team: { name: string }) => team.name === current) ? current : "");
+          if (!data.teams?.length) setTeamLookupError("This key has no teams available.");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setHerokuTeams([]);
+          setSelectedHerokuTeam("");
+          setTeamLookupError(error instanceof Error ? error.message : "Could not load teams");
+        }
+      } finally {
+        if (!cancelled) setIsLoadingHerokuTeams(false);
+      }
+    }, 700);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [herokuTeamKey]);
 
   const { data: stats } = useGetAdminStats();
   const { data: users, isLoading: isLoadingUsers } = useListAdminUsers();
@@ -183,15 +231,21 @@ export default function AdminDashboard() {
   async function loadHealth() {
     setIsLoadingHealth(true);
     try {
-      const [healthRes, keyRes] = await Promise.all([
+      const [healthRes, keyRes, teamRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/health`, { headers: authHeader() }),
         fetch(`${API_BASE}/api/admin/settings/heroku`, { headers: authHeader() }),
+        fetch(`${API_BASE}/api/admin/settings/heroku/team`, { headers: authHeader() }),
       ]);
       const data = await healthRes.json();
       setHealth(data);
       if (keyRes.ok) {
         const keyData = await keyRes.json();
         setHerokuKeyPreview(keyData.preview ?? null);
+      }
+      if (teamRes.ok) {
+        const teamData = await teamRes.json();
+        setSavedHerokuTeam(teamData.teamName ?? null);
+        setHerokuTeamPreview(teamData.preview ?? null);
       }
     } catch { toast({ title: "Failed to load health data", variant: "destructive" }); }
     finally { setIsLoadingHealth(false); }
@@ -217,6 +271,31 @@ export default function AdminDashboard() {
       toast({ title: "Heroku key saved", description: "Deployments will now use the new key." });
     } catch { toast({ title: "Network error", variant: "destructive" }); }
     finally { setIsSavingHerokuKey(false); }
+  }
+
+  async function saveHerokuTeam() {
+    if (!herokuTeamKey.trim() || !selectedHerokuTeam) return;
+    setIsSavingHerokuTeam(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings/heroku/team`, {
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify({ apiKey: herokuTeamKey.trim(), teamName: selectedHerokuTeam }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: "Failed to save team key", description: data.error, variant: "destructive" });
+        return;
+      }
+      setSavedHerokuTeam(data.teamName);
+      setHerokuTeamPreview(data.preview);
+      setHerokuTeamKey("");
+      setHerokuTeams([]);
+      setSelectedHerokuTeam("");
+      setHealth((prev: any) => prev ? { ...prev, integrations: { ...prev.integrations, heroku: "connected" } } : prev);
+      toast({ title: "Heroku team saved", description: `New bots will deploy to ${data.teamName}.` });
+    } catch { toast({ title: "Network error", variant: "destructive" }); }
+    finally { setIsSavingHerokuTeam(false); }
   }
 
   function handleTabChange(tab: string) {
@@ -717,6 +796,56 @@ export default function AdminDashboard() {
                           </CardContent>
                         </Card>
                       </div>
+
+                      <Card className="border-border/40">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <KeyRound className="h-4 w-4" /> Heroku Team Key
+                          </CardTitle>
+                          <CardDescription>
+                            Paste a key with team access. Available teams load automatically; select where new bots should be deployed.
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {savedHerokuTeam && (
+                            <div className="text-xs text-muted-foreground">
+                              Active deployment team: <span className="font-semibold text-foreground">{savedHerokuTeam}</span>
+                              {herokuTeamPreview && <span className="ml-2 font-mono">{herokuTeamPreview}</span>}
+                            </div>
+                          )}
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <Input
+                              type="password"
+                              placeholder={herokuTeamPreview ? "Paste a replacement team key" : "Paste Heroku team API key"}
+                              className="text-xs font-mono sm:max-w-md"
+                              value={herokuTeamKey}
+                              onChange={(e) => setHerokuTeamKey(e.target.value)}
+                            />
+                            <div className="flex min-w-48 items-center gap-2">
+                              {isLoadingHerokuTeams ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+                              <select
+                                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                value={selectedHerokuTeam}
+                                onChange={(e) => setSelectedHerokuTeam(e.target.value)}
+                                disabled={!herokuTeams.length || isLoadingHerokuTeams}
+                                aria-label="Select Heroku team"
+                              >
+                                <option value="">{herokuTeams.length ? "Select a team" : "Teams appear here"}</option>
+                                {herokuTeams.map((team) => <option key={team.name} value={team.name}>{team.name}</option>)}
+                              </select>
+                            </div>
+                            <Button
+                              size="sm"
+                              disabled={!herokuTeamKey.trim() || !selectedHerokuTeam || isSavingHerokuTeam || isLoadingHerokuTeams}
+                              onClick={saveHerokuTeam}
+                            >
+                              {isSavingHerokuTeam ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save team"}
+                            </Button>
+                          </div>
+                          {teamLookupError && <p className="text-xs text-destructive">{teamLookupError}</p>}
+                          <p className="text-xs text-muted-foreground">The team key becomes the active Heroku credential for new deployments and bot management.</p>
+                        </CardContent>
+                      </Card>
 
                       {/* Bot Stats */}
                       <Card className="border-border/40">

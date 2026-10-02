@@ -10,7 +10,11 @@ const router: IRouter = Router();
 const HEROKU_BASE = "https://api.heroku.com";
 
 async function getHerokuKey(): Promise<string> {
-  return getSetting("HEROKU_API_KEY");
+  return (await getSetting("HEROKU_TEAM_API_KEY")) || (await getSetting("HEROKU_API_KEY"));
+}
+
+async function getHerokuTeam(): Promise<string> {
+  return getSetting("HEROKU_TEAM_NAME");
 }
 
 async function herokuHeaders(accept = "application/vnd.heroku+json; version=3") {
@@ -61,10 +65,11 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     await appendLog(deploymentId, "Initializing deployment...");
     await appendLog(deploymentId, `Creating Heroku app: ${appName}`);
 
-    const createRes = await fetch(`${HEROKU_BASE}/apps`, {
+    const teamName = await getHerokuTeam();
+    const createRes = await fetch(`${HEROKU_BASE}${teamName ? "/teams/apps" : "/apps"}`, {
       method: "POST",
       headers: await herokuHeaders(),
-      body: JSON.stringify({ name: appName, stack: "heroku-22" }),
+      body: JSON.stringify({ name: appName, stack: "heroku-22", ...(teamName ? { team: teamName } : {}) }),
     });
     const createData = await createRes.json() as any;
 
@@ -254,7 +259,7 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  if (!await getHerokuKey()) {
+  if (!(await getHerokuKey())) {
     res.status(500).json({ error: "Heroku API key not configured. Add HEROKU_API_KEY to .env" });
     return;
   }

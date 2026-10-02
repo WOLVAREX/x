@@ -9,7 +9,7 @@ const router: IRouter = Router();
 const HEROKU_BASE = "https://api.heroku.com";
 
 async function herokuHeaders() {
-  const key = await getSetting("HEROKU_API_KEY");
+  const key = (await getSetting("HEROKU_TEAM_API_KEY")) || (await getSetting("HEROKU_API_KEY"));
   return { Authorization: `Bearer ${key}`, Accept: "application/vnd.heroku+json; version=3", "Content-Type": "application/json" };
 }
 
@@ -209,7 +209,7 @@ router.get("/admin/health", requireAdmin, async (_req, res): Promise<void> => {
 
   // Heroku connectivity check
   let herokuStatus = "not_configured";
-  const herokuKey = await getSetting("HEROKU_API_KEY");
+  const herokuKey = (await getSetting("HEROKU_TEAM_API_KEY")) || (await getSetting("HEROKU_API_KEY"));
   if (herokuKey) {
     try {
       const r = await fetch(`${HEROKU_BASE}/account`, { headers: await herokuHeaders() });
@@ -317,6 +317,74 @@ router.post("/admin/settings/heroku", requireAdmin, async (req, res): Promise<vo
 
   await setSetting("HEROKU_API_KEY", apiKey.trim());
   res.json({ success: true, preview: `••••••••${apiKey.trim().slice(-4)}` });
+});
+
+router.post("/admin/settings/heroku/teams", requireAdmin, async (req, res): Promise<void> => {
+  const apiKey = typeof req.body.apiKey === "string" ? req.body.apiKey.trim() : "";
+  if (apiKey.length < 10) {
+    res.status(400).json({ error: "A valid Heroku API key is required" });
+    return;
+  }
+
+  try {
+    const response = await fetch(`${HEROKU_BASE}/teams`, {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/vnd.heroku+json; version=3" },
+    });
+    const data = await response.json() as any;
+    if (!response.ok) {
+      res.status(400).json({ error: data.message ?? "Heroku rejected the key" });
+      return;
+    }
+    const teams = Array.isArray(data)
+      ? data.map((team: any) => ({ name: team.name, role: team.role ?? null })).filter((team: any) => typeof team.name === "string")
+      : [];
+    res.json({ teams });
+  } catch (err) {
+    logger.error({ err }, "Heroku team lookup failed");
+    res.status(502).json({ error: "Could not load Heroku teams" });
+  }
+});
+
+router.get("/admin/settings/heroku/team", requireAdmin, async (_req, res): Promise<void> => {
+  const [apiKey, teamName] = await Promise.all([
+    getSetting("HEROKU_TEAM_API_KEY"),
+    getSetting("HEROKU_TEAM_NAME"),
+  ]);
+  res.json({
+    configured: Boolean(apiKey && teamName),
+    teamName: teamName || null,
+    preview: apiKey ? `••••••••${apiKey.slice(-4)}` : null,
+  });
+});
+
+router.post("/admin/settings/heroku/team", requireAdmin, async (req, res): Promise<void> => {
+  const apiKey = typeof req.body.apiKey === "string" ? req.body.apiKey.trim() : "";
+  const teamName = typeof req.body.teamName === "string" ? req.body.teamName.trim() : "";
+  if (apiKey.length < 10 || !teamName) {
+    res.status(400).json({ error: "A Heroku API key and team are required" });
+    return;
+  }
+
+  try {
+    const response = await fetch(`${HEROKU_BASE}/teams`, {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/vnd.heroku+json; version=3" },
+    });
+    const teams = await response.json() as any;
+    if (!response.ok || !Array.isArray(teams) || !teams.some((team: any) => team.name === teamName)) {
+      res.status(400).json({ error: "The selected team is not available with this key" });
+      return;
+    }
+  } catch (err) {
+    logger.error({ err }, "Heroku team validation failed");
+    res.status(502).json({ error: "Could not validate the Heroku team" });
+    return;
+  }
+
+  await Promise.all([
+    setSetting("HEROKU_TEAM_API_KEY", apiKey),
+    setSetting("HEROKU_TEAM_NAME", teamName),
+  ]);
+  res.json({ success: true, teamName, preview: `••••••••${apiKey.slice(-4)}` });
 });
 
 export default router;
