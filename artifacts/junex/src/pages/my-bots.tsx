@@ -212,14 +212,14 @@ export default function MyBotsPage() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete {dep.botName}?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This archives the bot in J.H.P, stops and removes its hosting app, and keeps its app name and configuration available for recovery.
+                            This deletes the bot’s Heroku app to stop using resources, then keeps its name and configuration on your J.H.P account for recovery.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction className="bg-destructive text-destructive-foreground"
                             onClick={() => deleteMutation.mutate({ id: dep.id })}>
-                            Archive for recovery
+                            Delete app & keep recovery data
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>

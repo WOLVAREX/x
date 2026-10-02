@@ -238,7 +238,7 @@ export default function TemplateDetail() {
               <CardTitle className="flex items-center gap-2 text-base">
                 <Bot className="h-4 w-4" /> Bot Configuration
               </CardTitle>
-              <CardDescription>Give your bot a name and fill in required variables.</CardDescription>
+              <CardDescription>Choose a name unique to your account and fill in required variables. You can use this name later to recover the bot.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">

@@ -75,9 +75,9 @@ export default function RecoverPage() {
 
   return <Layout><div className="container mx-auto max-w-3xl px-4 py-8 sm:py-10">
     <Button variant="ghost" size="sm" className="mb-4" asChild><Link href="/my-bots"><ArrowLeft className="mr-1 h-4 w-4" /> My Bots</Link></Button>
-    <div className="mb-6"><Badge variant="outline" className="mb-3 gap-1.5"><RotateCcw className="h-3.5 w-3.5 text-primary" /> Bot recovery</Badge><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Recover a bot</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Paste the app name saved from deployment. J.H.P will restore its template and remaining plan time.</p></div>
-    <Card className="border-border/60"><CardHeader><CardTitle>Find your archived bot</CardTitle><CardDescription>Use the app name from My Bots, for example jxhp-123-my-bot.</CardDescription></CardHeader><CardContent>
-      <form onSubmit={lookup} className="flex flex-col gap-2 sm:flex-row"><Input required value={appName} onChange={(event) => setAppName(event.target.value)} placeholder="Heroku app name" className="font-mono" /><Button type="submit" disabled={isLookingUp} className="gap-2">{isLookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Find bot</Button></form>
+    <div className="mb-6"><Badge variant="outline" className="mb-3 gap-1.5"><RotateCcw className="h-3.5 w-3.5 text-primary" /> Bot recovery</Badge><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Recover a bot</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Enter the bot name or app name saved from deployment. J.H.P will restore its template and remaining plan time.</p></div>
+    <Card className="border-border/60"><CardHeader><CardTitle>Find your archived bot</CardTitle><CardDescription>Enter the bot name shown in My Bots, or its saved app name. Only bots on your account can be recovered.</CardDescription></CardHeader><CardContent>
+      <form onSubmit={lookup} className="flex flex-col gap-2 sm:flex-row"><Input required value={appName} onChange={(event) => setAppName(event.target.value)} placeholder="Bot name or app name" /><Button type="submit" disabled={isLookingUp} className="gap-2">{isLookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Find bot</Button></form>
     </CardContent></Card>
 
     {recovery && <div className="mt-5 space-y-5">

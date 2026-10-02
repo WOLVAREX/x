@@ -283,12 +283,14 @@ router.get("/deployments", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const { templateId, botName, envVars, planId } = req.body;
+  const { templateId, envVars, planId } = req.body;
+  const botName = typeof req.body?.botName === "string" ? req.body.botName.trim() : "";
 
-  if (!templateId || !botName) {
+  if (!templateId || !botName || botName.length > 60 || /[\u0000-\u001f\u007f]/.test(botName)) {
     res.status(400).json({ error: "templateId and botName are required" });
     return;
   }
+  const normalizedBotName = botName.toLowerCase();
 
   if (!(await getHerokuKey())) {
     res.status(500).json({ error: "Heroku API key not configured. Add HEROKU_API_KEY to .env" });
@@ -303,6 +305,12 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
 
   const expiresAt = new Date(Date.now() + plan.days * 86_400_000);
   const result = await db.transaction(async (tx) => {
+    // Serialize same-account name checks to keep names unique under concurrent deploy requests.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${user.id}, hashtext(${normalizedBotName}))`);
+    const [existingName] = await tx.select({ id: deploymentsTable.id }).from(deploymentsTable)
+      .where(and(eq(deploymentsTable.userId, user.id), sql`lower(trim(${deploymentsTable.botName})) = ${normalizedBotName}`)).limit(1);
+    if (existingName) return { duplicateName: true as const };
+
     if (user.role !== "admin") {
       const [updatedUser] = await tx.update(usersTable)
         .set({ coinBalance: sql`${usersTable.coinBalance} - ${plan.coins}` })
@@ -318,13 +326,17 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
     if (user.role !== "admin") {
       await tx.insert(coinTransactionsTable).values({ userId: user.id, type: "debit", amount: plan.coins, reference: `DEPLOY-${deployment.id}`, description: `${plan.name} hosting plan for ${botName}` });
     }
-    return deployment;
+    return { deployment };
   });
   if (!result) {
     res.status(402).json({ error: "Not enough coins for this plan", requiredCoins: plan.coins, balance: user.coinBalance });
     return;
   }
-  const deployment = result;
+  if ("duplicateName" in result) {
+    res.status(409).json({ error: "You already have a bot with this name. Choose a unique name for your account." });
+    return;
+  }
+  const deployment = result.deployment;
 
   // Return immediately — deploy runs in background
   res.status(201).json(formatDeployment(deployment, template.name, template.thumbnail));
@@ -538,6 +550,21 @@ function normalizeAppName(input: unknown): string {
   return input.trim().replace(/^https?:\/\//i, "").replace(/\.herokuapp\.com\/?$/i, "").replace(/\/$/, "").toLowerCase();
 }
 
+async function findArchivedBot(userId: number, appName: string, botName: string) {
+  const scope = and(eq(deploymentsTable.userId, userId), isNotNull(deploymentsTable.archivedAt));
+  const [byAppName] = await db.select({ deployment: deploymentsTable, template: templatesTable })
+    .from(deploymentsTable).innerJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
+    .where(and(scope, eq(deploymentsTable.herokuAppId, appName)));
+  if (byAppName) return byAppName;
+  const normalizedBotName = botName.trim().toLowerCase();
+  if (!normalizedBotName) return undefined;
+  const [byBotName] = await db.select({ deployment: deploymentsTable, template: templatesTable })
+    .from(deploymentsTable).innerJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
+    .where(and(scope, sql`lower(trim(${deploymentsTable.botName})) = ${normalizedBotName}`))
+    .orderBy(sql`${deploymentsTable.archivedAt} DESC`).limit(1);
+  return byBotName;
+}
+
 router.get("/recovery/options", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const rows = await db.select({ id: deploymentsTable.id, botName: deploymentsTable.botName, templateName: templatesTable.name })
@@ -558,17 +585,16 @@ router.get("/recovery/source/:id", requireAuth, async (req, res): Promise<void> 
 
 router.get("/recovery/lookup", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const appName = normalizeAppName(req.query.appName);
-  if (!appName) { res.status(400).json({ error: "Enter the Heroku app name" }); return; }
-  const [row] = await db.select({ deployment: deploymentsTable, template: templatesTable })
-    .from(deploymentsTable).innerJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
-    .where(and(eq(deploymentsTable.userId, user.id), eq(deploymentsTable.herokuAppId, appName), isNotNull(deploymentsTable.archivedAt)));
-  if (!row) { res.status(404).json({ error: "No archived bot with that app name was found on your account" }); return; }
+  const identifier = typeof req.query.appName === "string" ? req.query.appName.trim() : "";
+  const appName = normalizeAppName(identifier);
+  if (!identifier) { res.status(400).json({ error: "Enter the bot name or app name" }); return; }
+  const row = await findArchivedBot(user.id, appName, identifier);
+  if (!row) { res.status(404).json({ error: "No archived bot with that name was found on your account" }); return; }
   const fields = (row.template.appJson as any)?.env ?? {};
   const [sources] = await Promise.all([db.select({ id: deploymentsTable.id, botName: deploymentsTable.botName, envVars: deploymentsTable.envVars })
     .from(deploymentsTable).where(and(eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)))]);
   res.json({
-    id: row.deployment.id, appName: row.deployment.herokuAppId, botName: row.deployment.botName,
+    id: row.deployment.id, appName: row.deployment.herokuAppId ?? sanitizeAppName(row.deployment.botName, row.deployment.id), botName: row.deployment.botName,
     templateId: row.template.id, templateName: row.template.name, envVars: row.deployment.envVars,
     fields, planId: row.deployment.planId, expiresAt: row.deployment.expiresAt,
     daysLeft: row.deployment.expiresAt ? Math.max(0, Math.ceil((row.deployment.expiresAt.getTime() - Date.now()) / 86_400_000)) : 0,
@@ -578,12 +604,12 @@ router.get("/recovery/lookup", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/recovery", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const appName = normalizeAppName(req.body?.appName);
-  if (!appName) { res.status(400).json({ error: "App name is required" }); return; }
-  const [row] = await db.select({ deployment: deploymentsTable, template: templatesTable })
-    .from(deploymentsTable).innerJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
-    .where(and(eq(deploymentsTable.userId, user.id), eq(deploymentsTable.herokuAppId, appName), isNotNull(deploymentsTable.archivedAt)));
+  const identifier = typeof req.body?.appName === "string" ? req.body.appName.trim() : "";
+  const normalizedAppName = normalizeAppName(identifier);
+  if (!identifier) { res.status(400).json({ error: "Bot name or app name is required" }); return; }
+  const row = await findArchivedBot(user.id, normalizedAppName, identifier);
   if (!row) { res.status(404).json({ error: "Archived bot not found" }); return; }
+  const appName = row.deployment.herokuAppId ?? sanitizeAppName(row.deployment.botName, row.deployment.id);
   if (!(await getHerokuKey())) { res.status(503).json({ error: "Heroku is not configured" }); return; }
   const inputVars = req.body?.envVars;
   if (!inputVars || typeof inputVars !== "object" || Array.isArray(inputVars) || Object.keys(inputVars).length > 100 || Object.values(inputVars).some((value) => typeof value !== "string" || value.length > 10_000)) {
