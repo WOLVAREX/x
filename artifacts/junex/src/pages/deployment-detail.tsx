@@ -144,6 +144,7 @@ export default function DeploymentDetail() {
   const [logs, setLogs] = useState<string[]>([]);
   const [deployStatus, setDeployStatus] = useState("building");
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
+  const [showDatabaseUrl, setShowDatabaseUrl] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [newVal, setNewVal] = useState("");
   const [isSavingEnv, setIsSavingEnv] = useState(false);
@@ -160,6 +161,16 @@ export default function DeploymentDetail() {
     setFailureReason(deployment?.failureReason ?? null);
     setHerokuDeletedAt(deployment?.herokuDeletedAt ?? null);
   }, [deployment]);
+
+  // Postgres is provisioned asynchronously during deployment. Refresh the
+  // managed config value while the app is building so it appears without a reload.
+  useEffect(() => {
+    if (!deployment?.herokuAppId || deployment.databaseUrl || deployment.status !== "building") return;
+    const interval = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: getGetDeploymentQueryKey(id) });
+    }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [deployment?.herokuAppId, deployment?.databaseUrl, deployment?.status, id, queryClient]);
 
   // Check Heroku's live dynos/build and refresh logs while a deployment is active.
   useEffect(() => {
@@ -458,6 +469,31 @@ export default function DeploymentDetail() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
+                {deployment?.databaseUrl && (
+                  <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
+                    <div>
+                      <p className="text-sm font-medium">Heroku Postgres</p>
+                      <p className="text-xs text-muted-foreground">Managed by Heroku and kept separate from editable bot variables.</p>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="min-w-0 flex-1 truncate rounded-md border border-border/40 bg-muted px-3 py-2 font-mono text-xs" title={showDatabaseUrl ? deployment.databaseUrl : undefined}>
+                        {showDatabaseUrl ? deployment.databaseUrl : "••••••••••••••••••••••••••••••••"}
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => setShowDatabaseUrl((visible) => !visible)}>
+                        {showDatabaseUrl ? "Hide" : "Show"}
+                      </Button>
+                      <Button variant="outline" size="icon" aria-label="Copy database URL" onClick={() => navigator.clipboard.writeText(deployment.databaseUrl!).then(() => toast({ title: "Database URL copied" })).catch(() => toast({ title: "Could not copy database URL", variant: "destructive" }))}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="break-all font-mono text-[10px] text-muted-foreground">Config key: DATABASE_URL</p>
+                  </div>
+                )}
+                {deployment && !deployment.databaseUrl && (
+                  <p className="rounded-lg border border-border/40 bg-muted/30 p-3 text-sm text-muted-foreground">
+                    Heroku Postgres is still provisioning or is not attached to this app. DATABASE_URL will appear here when Heroku provides it.
+                  </p>
+                )}
                 {Object.entries(envVars).length === 0 && (
                   <p className="text-sm text-muted-foreground italic">No environment variables set.</p>
                 )}
