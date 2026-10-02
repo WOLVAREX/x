@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useQuery } from "@tanstack/react-query";
 import type { Template } from "@workspace/api-client-react";
 import {
-  Loader2, Github, ArrowLeft, Bot, Users, Zap, KeyRound, Gift, Coins,
+  Loader2, Github, ArrowLeft, Bot, Users, Zap, KeyRound, Gift, Coins, ChevronDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -165,6 +165,24 @@ export default function TemplateDetail() {
   const envFields = Object.entries(
     (template.appJson?.env as Record<string, { description?: string; required?: boolean }>) ?? {}
   );
+  const requiredEnvFields = envFields.filter(([, config]) => config.required !== false);
+  const optionalEnvFields = envFields.filter(([, config]) => config.required === false);
+  const renderEnvField = ([key, config]: typeof envFields[number]) => (
+    <div key={key} className="space-y-1.5">
+      <Label htmlFor={key} className="flex items-center gap-1.5 text-xs">
+        <code className="text-primary">{key}</code>
+        {config.required !== false && <Badge variant="outline" className="text-[10px] px-1 py-0">required</Badge>}
+      </Label>
+      {config.description && <p className="text-xs text-muted-foreground">{config.description}</p>}
+      <Input
+        id={key}
+        placeholder={config.description ?? key}
+        value={envVars[key] ?? ""}
+        onChange={(e) => setEnvVars((prev) => ({ ...prev, [key]: e.target.value }))}
+        className="font-mono text-sm"
+      />
+    </div>
+  );
 
   return (
     <Layout>
@@ -240,26 +258,19 @@ export default function TemplateDetail() {
                     <p className="text-sm font-medium flex items-center gap-2">
                       <KeyRound className="h-4 w-4" /> Environment Variables
                     </p>
-                    {envFields.map(([key, config]) => (
-                      <div key={key} className="space-y-1.5">
-                        <Label htmlFor={key} className="flex items-center gap-1.5 text-xs">
-                          <code className="text-primary">{key}</code>
-                          {config.required !== false && (
-                            <Badge variant="outline" className="text-[10px] px-1 py-0">required</Badge>
-                          )}
-                        </Label>
-                        {config.description && (
-                          <p className="text-xs text-muted-foreground">{config.description}</p>
-                        )}
-                        <Input
-                          id={key}
-                          placeholder={config.description ?? key}
-                          value={envVars[key] ?? ""}
-                          onChange={(e) => setEnvVars((prev) => ({ ...prev, [key]: e.target.value }))}
-                          className="font-mono text-sm"
-                        />
+                    {requiredEnvFields.length > 0 && <div className="space-y-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Required variables</p>
+                      {requiredEnvFields.map(renderEnvField)}
+                    </div>}
+                    {optionalEnvFields.length > 0 && <details className="group rounded-lg border border-border/60 px-3">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                        <span>More variables <span className="font-normal text-muted-foreground">({optionalEnvFields.length} optional)</span></span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                      </summary>
+                      <div className="space-y-4 border-t border-border/60 pb-3 pt-4">
+                        {optionalEnvFields.map(renderEnvField)}
                       </div>
-                    ))}
+                    </details>}
                   </div>
                 </>
               )}

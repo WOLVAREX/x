@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowLeft, Bot, Check, Clock, Loader2, RotateCcw, Search, Settings2, WandSparkles } from "lucide-react";
+import { ArrowLeft, Bot, Check, ChevronDown, Clock, Loader2, RotateCcw, Search, Settings2, WandSparkles } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,8 @@ export default function RecoverPage() {
   const [planId, setPlanId] = useState("");
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
+  const requiredFields = Object.entries(recovery?.fields ?? {}).filter(([, field]) => field.required !== false);
+  const optionalFields = Object.entries(recovery?.fields ?? {}).filter(([, field]) => field.required === false);
 
   async function lookup(event: React.FormEvent) {
     event.preventDefault(); setIsLookingUp(true); setRecovery(null); setSourceId("");
@@ -83,7 +85,21 @@ export default function RecoverPage() {
 
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><Settings2 className="h-4 w-4" /> Bot configuration</CardTitle><CardDescription>Use the saved values or load them from one of your other bots, then update what changed.</CardDescription></CardHeader><CardContent className="space-y-4">
         {recovery.sources.length > 0 && <div className="space-y-1.5"><Label htmlFor="source-bot">Copy configuration from another bot</Label><select id="source-bot" value={sourceId} onChange={(event) => void chooseSource(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">Keep this bot’s saved configuration</option>{recovery.sources.map((source) => <option key={source.id} value={source.id}>{source.botName} · {source.templateName}</option>)}</select></div>}
-        {Object.entries(recovery.fields).length ? Object.entries(recovery.fields).map(([key, field]) => <div key={key} className="space-y-1.5"><Label htmlFor={`recover-${key}`}>{key}{field.required !== false && <span className="ml-1 text-destructive">*</span>}</Label>{field.description && <p className="text-xs text-muted-foreground">{field.description}</p>}<Input id={`recover-${key}`} value={envVars[key] ?? ""} onChange={(event) => setEnvVars((current) => ({ ...current, [key]: event.target.value }))} className="font-mono" /></div>) : <p className="text-sm text-muted-foreground">This template has no environment variables to configure.</p>}
+        {Object.entries(recovery.fields).length ? <div className="space-y-4">
+          {requiredFields.length > 0 && <section className="space-y-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Required variables</p>
+            {requiredFields.map(([key, field]) => <div key={key} className="space-y-1.5"><Label htmlFor={`recover-${key}`}>{key}<span className="ml-1 text-destructive">*</span></Label>{field.description && <p className="text-xs text-muted-foreground">{field.description}</p>}<Input id={`recover-${key}`} value={envVars[key] ?? ""} onChange={(event) => setEnvVars((current) => ({ ...current, [key]: event.target.value }))} className="font-mono" /></div>)}
+          </section>}
+          {optionalFields.length > 0 && <details className="group rounded-lg border border-border/60 px-3">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+              <span>More variables <span className="font-normal text-muted-foreground">({optionalFields.length} optional)</span></span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="space-y-4 border-t border-border/60 pb-3 pt-4">
+              {optionalFields.map(([key, field]) => <div key={key} className="space-y-1.5"><Label htmlFor={`recover-${key}`}>{key}<span className="ml-1 text-muted-foreground">(optional)</span></Label>{field.description && <p className="text-xs text-muted-foreground">{field.description}</p>}<Input id={`recover-${key}`} value={envVars[key] ?? ""} onChange={(event) => setEnvVars((current) => ({ ...current, [key]: event.target.value }))} className="font-mono" /></div>)}
+            </div>
+          </details>}
+        </div> : <p className="text-sm text-muted-foreground">This template has no environment variables to configure.</p>}
         {recovery.daysLeft <= 0 && <div className="space-y-1.5"><Label htmlFor="renew-plan">Select a plan to renew</Label><select id="renew-plan" value={planId} onChange={(event) => setPlanId(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} · {plan.days} days · {plan.coins} coins</option>)}</select></div>}
         <Button className="w-full gap-2" disabled={isRecovering || (recovery.daysLeft <= 0 && !planId)} onClick={() => void recoverBot()}>{isRecovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}{isRecovering ? "Recovering bot…" : "Recover bot"}</Button>
         <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /> Recovery recreates the deleted Heroku app with its original app name. Remaining days carry over; expired plans require a new plan.</p>
