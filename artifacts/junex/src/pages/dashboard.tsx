@@ -18,7 +18,7 @@ import { ProtectedRoute } from "@/components/protected-route";
 import {
   Loader2, Server, AlertCircle, Terminal, Play, Square,
   RotateCcw, Plus, CheckCircle2, XCircle, Clock, Wallet,
-  ArrowRight, Bot, Activity, Zap, TrendingUp,
+  ArrowRight, Bot, Activity, Zap, TrendingUp, Copy,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -274,6 +274,12 @@ export default function Dashboard() {
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Clock className="h-3 w-3" />
                             Deployed {format(new Date(deployment.createdAt), "MMM d, yyyy")}
+                          </div>
+                          <div className="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                            <Server className="h-3 w-3 shrink-0" />
+                            <span className="shrink-0">App:</span>
+                            <span className="min-w-0 truncate font-mono text-[11px] text-foreground/80">{deployment.herokuAppId ?? "Assigning name…"}</span>
+                            {deployment.herokuAppId && <Button variant="ghost" size="icon" aria-label="Copy app name" className="ml-auto h-6 w-6 shrink-0" onClick={() => navigator.clipboard.writeText(deployment.herokuAppId!).then(() => toast({ title: "App name copied" })).catch(() => toast({ title: "Could not copy app name", variant: "destructive" }))}><Copy className="h-3 w-3" /></Button>}
                           </div>
                         </CardContent>
 

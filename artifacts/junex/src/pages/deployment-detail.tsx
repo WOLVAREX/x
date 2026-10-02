@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
@@ -55,24 +55,78 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+const ansiColor = (code: number): string | undefined => {
+  const basic = ["#111827", "#ef4444", "#22c55e", "#eab308", "#3b82f6", "#a855f7", "#06b6d4", "#d1d5db"];
+  const bright = ["#6b7280", "#f87171", "#4ade80", "#fde047", "#60a5fa", "#c084fc", "#22d3ee", "#ffffff"];
+  if (code >= 30 && code <= 37) return basic[code - 30];
+  if (code >= 90 && code <= 97) return bright[code - 90];
+  if (code >= 40 && code <= 47) return basic[code - 40];
+  if (code >= 100 && code <= 107) return bright[code - 100];
+  return undefined;
+};
+
+function ansiSegments(input: string): Array<{ text: string; style: CSSProperties }> {
+  const line = input
+    .replace(/^\[[^\]]+\]\s*/, "")
+    .replace(/^\d{4}-\d\d-\d\dT\S+\s+[^\s:]+(?:\[[^\]]+\])?:\s?/, "")
+    .replace(/^(?:app|heroku)\[[^\]]+\]:\s?/, "")
+    .replace(/\u001b\[([\d;]*)m|\ufffd\[([\d;]*)m|\\x1b\[([\d;]*)m|\\u001b\[([\d;]*)m/g, "§§$1$2$3$4§§")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+  const segments: Array<{ text: string; style: CSSProperties }> = [];
+  let style: CSSProperties = {};
+  const parts = line.split("§§");
+  for (const [index, part] of parts.entries()) {
+    if (index % 2 === 0) {
+      if (part) segments.push({ text: part, style: { ...style } });
+      continue;
+    }
+    const codes = (part || "0").split(";").map(Number);
+    for (let i = 0; i < codes.length; i++) {
+      const code = codes[i];
+      if (code === 0) style = {};
+      else if (code === 1) style.fontWeight = 700;
+      else if (code === 2) style.opacity = 0.75;
+      else if (code === 3) style.fontStyle = "italic";
+      else if (code === 4) style.textDecoration = "underline";
+      else if (code === 22) { delete style.fontWeight; delete style.opacity; }
+      else if (code === 23) delete style.fontStyle;
+      else if (code === 24) delete style.textDecoration;
+      else if (code === 39) delete style.color;
+      else if (code === 49) delete style.backgroundColor;
+      else if (code === 38 || code === 48) {
+        const property = code === 38 ? "color" : "backgroundColor";
+        if (codes[i + 1] === 2 && codes.length >= i + 5) {
+          style[property] = `rgb(${codes[i + 2]}, ${codes[i + 3]}, ${codes[i + 4]})`;
+          i += 4;
+        } else if (codes[i + 1] === 5 && codes[i + 2] !== undefined) {
+          const n = codes[i + 2];
+          const cube = (v: number) => v === 0 ? 0 : 55 + 40 * v;
+          const value = n < 16 ? ansiColor(n < 8 ? n + (code === 38 ? 30 : 40) : n + (code === 38 ? 82 : 92)) : n < 232
+            ? `rgb(${cube(Math.floor((n - 16) / 36))}, ${cube(Math.floor(((n - 16) % 36) / 6))}, ${cube((n - 16) % 6)})`
+            : `rgb(${8 + (n - 232) * 10}, ${8 + (n - 232) * 10}, ${8 + (n - 232) * 10})`;
+          if (value) style[property] = value;
+          i += 2;
+        }
+      } else {
+        const color = ansiColor(code);
+        if (color) style[code >= 40 && code <= 47 || code >= 100 && code <= 107 ? "backgroundColor" : "color"] = color;
+      }
+    }
+  }
+  return segments;
+}
+
 function LogLine({ line }: { line: string }) {
-  if (!line || line.trim() === "") return <div className="h-2" />;
+  if (!line || line.trim() === "") return <div className="h-1.5" />;
   const divider = line.match(/^--\s*(.*?)\s*--$/);
-  if (divider) return <div className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-slate-800" />{divider[1]}<span className="h-px flex-1 bg-slate-800" /></div>;
-  const timestamp = line.match(/^\[(\d{4}-\d\d-\d\dT[^\]]+)\]\s*/)?.[1];
-  const message = timestamp ? line.slice(line.indexOf("]") + 2) : line;
-  const isError   = /\b(ERROR|FATAL|FAILED)\b/i.test(message);
-  const isSuccess = /successful|succeeded|deployed|is running|bot is live/i.test(message);
-  const isWarning = /\bWARNING\b/i.test(message);
-  const time = timestamp ? new Date(timestamp) : null;
+  if (divider) return <div className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-slate-800" />{divider[1].replace(/Heroku Runtime/i, "Bot Output").replace(/Live Heroku Logs/i, "Bot Output")}<span className="h-px flex-1 bg-slate-800" /></div>;
+  const segments = ansiSegments(line);
+  if (segments.length === 0) return null;
   return (
-    <div className="group flex gap-3 rounded-md px-2 py-1.5 hover:bg-white/[0.03]">
-      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-600 group-hover:bg-slate-400" />
-      {time && !Number.isNaN(time.getTime()) && <time className="w-[4.5rem] shrink-0 pt-0.5 font-mono text-[10px] tabular-nums text-slate-500">{format(time, "HH:mm:ss")}</time>}
-      <span className={`min-w-0 break-words font-mono text-xs leading-5 ${
-        isError ? "text-red-400" : isSuccess ? "font-medium text-emerald-400" : isWarning ? "text-amber-400" : "text-slate-300"
-      }`}>
-        {message}
+    <div className="group flex min-w-0 items-start gap-2 rounded-md px-2 py-1 hover:bg-white/[0.03]">
+      <span className="mt-0.5 shrink-0 rounded border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-sans text-[9px] font-semibold leading-none text-primary">J.H.P</span>
+      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-slate-200">
+        {segments.map((segment, index) => <span key={index} style={segment.style}>{segment.text}</span>)}
       </span>
     </div>
   );
@@ -133,7 +187,7 @@ export default function DeploymentDetail() {
             const hRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
             const hData = await hRes.json();
             if (!hRes.ok) throw new Error(hData.error ?? "Could not fetch Heroku logs");
-            setLogs(hData.lines?.length ? [...lines, "", "-- Heroku Runtime --", ...hData.lines] : lines);
+            setLogs(hData.lines?.length ? [...lines, "", "-- Bot Output --", ...hData.lines] : lines);
           } catch (error) {
             setLogs(lines);
             setHerokuStatusError(error instanceof Error ? error.message : "Could not fetch Heroku runtime logs");
@@ -182,7 +236,7 @@ export default function DeploymentDetail() {
         const herokuRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
         const herokuData = await herokuRes.json();
         if (!herokuRes.ok) throw new Error(herokuData.error ?? "Could not read Heroku runtime logs");
-        setLogs(herokuData.lines?.length ? [...(deployData.lines ?? []), "", "-- Heroku Runtime --", ...herokuData.lines] : deployData.lines ?? []);
+        setLogs(herokuData.lines?.length ? [...(deployData.lines ?? []), "", "-- Bot Output --", ...herokuData.lines] : deployData.lines ?? []);
       } else setLogs(deployData.lines ?? []);
       setHerokuStatusError(null);
       toast({ title: "Heroku status and logs refreshed" });
@@ -344,7 +398,7 @@ export default function DeploymentDetail() {
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10"><Terminal className="h-4 w-4 text-primary" /></div>
                 <div className="min-w-0 flex-1">
                   <CardTitle className="text-sm font-medium">Deployment activity</CardTitle>
-                  <CardDescription className="mt-0.5 text-xs">J.H.P deployment events and live bot runtime output</CardDescription>
+                  <CardDescription className="mt-0.5 text-xs">J.H.P deployment activity and colorized bot output</CardDescription>
                 </div>
                 {isBuilding && (
                   <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[11px] text-blue-300">
