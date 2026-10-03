@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 
 function authHeader() {
-  const token = localStorage.getItem("JuneXHostingPlatform_token");
+  const token = localStorage.getItem("junex_token");
   return { Authorization: `Bearer ${token}` };
 }
 
@@ -74,10 +74,26 @@ export default function Dashboard() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/wallet`, { headers: authHeader() })
-      .then(r => r.json())
-      .then(d => { setWalletBalance(d.balance ?? 0); })
-      .catch(() => setWalletBalance(0));
+    let active = true;
+    const loadWalletBalance = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/wallet`, { headers: authHeader(), cache: "no-store" });
+        if (!response.ok) throw new Error("Could not load wallet balance");
+        const data = await response.json();
+        if (active) setWalletBalance(data.balance ?? 0);
+      } catch {
+        // Keep the last known balance if the network is temporarily unavailable.
+      }
+    };
+
+    void loadWalletBalance();
+    const interval = window.setInterval(() => void loadWalletBalance(), 30_000);
+    window.addEventListener("focus", loadWalletBalance);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", loadWalletBalance);
+    };
   }, []);
 
   const invalidate = () =>
