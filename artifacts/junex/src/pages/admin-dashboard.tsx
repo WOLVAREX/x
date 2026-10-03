@@ -31,7 +31,7 @@ import {
   Plus, Github, ExternalLink, Bot, ShieldCheck, TrendingUp, Zap,
   Eye, Globe, AlertCircle, CheckCircle2, Clock, XCircle, UserCircle2,
   Pencil, Terminal, UserX, UserCheck, RefreshCw, Database,
-  Wifi, WifiOff, DollarSign, KeyRound, Coins, CreditCard, Star,
+  Wifi, WifiOff, DollarSign, KeyRound, Coins, CreditCard, Star, Search,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AdminTemplateEditModal } from "@/components/admin-template-edit-modal";
@@ -104,6 +104,10 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("templates");
+  const [userSearch, setUserSearch] = useState("");
+  const [coinCreditUser, setCoinCreditUser] = useState<{ id: number; username: string; email: string; coinBalance: number } | null>(null);
+  const [coinCreditAmount, setCoinCreditAmount] = useState("");
+  const [isCreditingCoins, setIsCreditingCoins] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [logsBot, setLogsBot] = useState<{ id: number; name: string } | null>(null);
@@ -226,6 +230,34 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: getListAdminDeploymentsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
     } else { toast({ title: "Failed to delete user", variant: "destructive" }); }
+  }
+
+  async function handleCreditCoins() {
+    if (!coinCreditUser) return;
+    const amount = Number(coinCreditAmount);
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+      toast({ title: "Enter a positive whole number of coins", variant: "destructive" });
+      return;
+    }
+    setIsCreditingCoins(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${coinCreditUser.id}/coins`, {
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify({ amount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not add coins");
+      toast({ title: `${amount} coins added`, description: `${data.username}'s balance is now ${data.coinBalance} coins.` });
+      setCoinCreditUser(null);
+      setCoinCreditAmount("");
+      queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: ["admin-transactions"] });
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : "Could not add coins", variant: "destructive" });
+    } finally {
+      setIsCreditingCoins(false);
+    }
   }
 
   async function handleDeleteBot(depId: number) {
@@ -625,6 +657,16 @@ export default function AdminDashboard() {
                   <CardHeader className="pb-4">
                     <CardTitle>Registered Users</CardTitle>
                     <CardDescription>Suspend, unsuspend or delete user accounts.</CardDescription>
+                    <div className="relative mt-2 max-w-md">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={userSearch}
+                        onChange={(event) => setUserSearch(event.target.value)}
+                        placeholder="Search by email or username"
+                        aria-label="Search users by email or username"
+                        className="pl-9"
+                      />
+                    </div>
                   </CardHeader>
                   <CardContent className="p-0">
                     {isLoadingUsers ? (
@@ -635,6 +677,7 @@ export default function AdminDashboard() {
                           <TableRow className="hover:bg-transparent border-border/40">
                             <TableHead className="pl-6">User</TableHead>
                             <TableHead>Email</TableHead>
+                            <TableHead>Coins</TableHead>
                             <TableHead>Role</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Bots</TableHead>
@@ -643,7 +686,10 @@ export default function AdminDashboard() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {users?.map((u: any) => {
+                          {users?.filter((u: any) => {
+                            const query = userSearch.trim().toLowerCase();
+                            return !query || String(u.email).toLowerCase().includes(query) || String(u.username).toLowerCase().includes(query);
+                          }).map((u: any) => {
                             const userDeployCount = deployments?.filter((d) => d.userId === u.id).length ?? 0;
                             const isSuspended = u.suspended ?? false;
                             const isAdmin = u.role === "admin";
@@ -663,6 +709,7 @@ export default function AdminDashboard() {
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-sm text-muted-foreground">{u.email}</TableCell>
+                                <TableCell className="whitespace-nowrap text-sm font-medium"><span className="inline-flex items-center gap-1.5"><Coins className="h-3.5 w-3.5 text-amber-500" />{u.coinBalance ?? 0}</span></TableCell>
                                 <TableCell>
                                   <Badge variant={isAdmin ? "default" : "outline"}
                                     className={isAdmin ? "bg-primary/20 text-primary border-primary/30 hover:bg-primary/20" : ""}>
@@ -685,8 +732,13 @@ export default function AdminDashboard() {
                                 </TableCell>
                                 <TableCell className="text-sm text-muted-foreground">{format(new Date(u.createdAt), "MMM d, yyyy")}</TableCell>
                                 <TableCell className="text-right pr-6">
-                                  {!isAdmin && (
-                                    <div className="flex items-center justify-end gap-1">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1"
+                                      onClick={() => { setCoinCreditUser({ id: u.id, username: u.username, email: u.email, coinBalance: u.coinBalance ?? 0 }); setCoinCreditAmount(""); }}>
+                                      <Coins className="h-3.5 w-3.5" /> Add coins
+                                    </Button>
+                                    {!isAdmin && (
+                                      <>
                                       {/* Suspend / Unsuspend */}
                                       {isSuspended ? (
                                         <Button variant="ghost" size="sm" className="h-7 px-2 text-emerald-500 hover:bg-emerald-500/10 text-xs gap-1"
@@ -720,18 +772,22 @@ export default function AdminDashboard() {
                                           </AlertDialogFooter>
                                         </AlertDialogContent>
                                       </AlertDialog>
-                                    </div>
-                                  )}
+                                      </>
+                                    )}
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
                           })}
                           {(!users || users.length === 0) && (
                             <TableRow>
-                              <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                              <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                                 <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />No users registered yet.
                               </TableCell>
                             </TableRow>
+                          )}
+                          {users && users.length > 0 && !users.some((u: any) => String(u.email).toLowerCase().includes(userSearch.trim().toLowerCase()) || String(u.username).toLowerCase().includes(userSearch.trim().toLowerCase())) && (
+                            <TableRow><TableCell colSpan={8} className="text-center py-12 text-muted-foreground">No users match this search.</TableCell></TableRow>
                           )}
                         </TableBody>
                       </Table>
@@ -1014,6 +1070,36 @@ export default function AdminDashboard() {
           onOpenChange={setShowEditModal}
           onSaved={() => queryClient.invalidateQueries({ queryKey: getListTemplatesQueryKey() })}
         />
+
+        <Dialog open={!!coinCreditUser} onOpenChange={(open) => { if (!open && !isCreditingCoins) setCoinCreditUser(null); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Coins className="h-5 w-5 text-amber-500" />Add coins to user</DialogTitle>
+            </DialogHeader>
+            {coinCreditUser && (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                  <p className="font-medium">{coinCreditUser.username}</p>
+                  <p className="text-sm text-muted-foreground">{coinCreditUser.email}</p>
+                  <p className="mt-2 text-sm">Current balance: <span className="font-semibold">{coinCreditUser.coinBalance} coins</span></p>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="admin-coin-amount" className="text-sm font-medium">Coins to add</label>
+                  <Input id="admin-coin-amount" type="number" min="1" step="1" value={coinCreditAmount}
+                    onChange={(event) => setCoinCreditAmount(event.target.value)} placeholder="Enter a whole number" />
+                  <p className="text-xs text-muted-foreground">This will be recorded in the coin transaction history.</p>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setCoinCreditUser(null)} disabled={isCreditingCoins}>Cancel</Button>
+                  <Button onClick={() => void handleCreditCoins()} disabled={isCreditingCoins || !coinCreditAmount.trim()}>
+                    {isCreditingCoins ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Coins className="mr-2 h-4 w-4" />}
+                    Add coins
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Bot Logs Modal */}
         <Dialog open={!!logsBot} onOpenChange={(v) => { if (!v) setLogsBot(null); }}>

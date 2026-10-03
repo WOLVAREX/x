@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, deploymentsTable, templatesTable, usersTable, paymentsTable, walletTransactionsTable, coinTransactionsTable } from "@workspace/db";
-import { eq, desc, sql } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { getSetting, setSetting } from "../lib/settings";
@@ -50,11 +50,54 @@ router.get("/admin/users", requireAdmin, async (_req, res): Promise<void> => {
   res.json(users.map(u => ({
     id: u.id, username: u.username, email: u.email,
     role: u.role, suspended: u.suspended ?? false,
-    walletBalance: u.walletBalance ?? 0, createdAt: u.createdAt,
+    walletBalance: u.walletBalance ?? 0, coinBalance: u.coinBalance ?? 0, createdAt: u.createdAt,
   })));
 });
 
 // ── Suspend user ──────────────────────────────────────────
+router.post("/admin/users/:id/coins", requireAdmin, async (req, res): Promise<void> => {
+  const id = Number.parseInt(req.params.id as string, 10);
+  const amount = req.body?.amount;
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 2_147_483_647) {
+    res.status(400).json({ error: "Coin amount must be a whole number from 1 to 2,147,483,647" });
+    return;
+  }
+
+  const requester = (req as typeof req & { user: { id: number } }).user;
+  const reference = `ADMIN-COINS-${id}-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const result = await db.transaction(async (tx) => {
+    const [user] = await tx.update(usersTable)
+      .set({ coinBalance: sql`${usersTable.coinBalance} + ${amount}` })
+      .where(and(eq(usersTable.id, id), sql`${usersTable.coinBalance} <= ${2_147_483_647 - amount}`))
+      .returning({ id: usersTable.id, username: usersTable.username, email: usersTable.email, coinBalance: usersTable.coinBalance });
+    if (!user) return null;
+
+    await tx.insert(coinTransactionsTable).values({
+      userId: id,
+      type: "credit",
+      amount,
+      reference,
+      description: `Admin coin credit by administrator #${requester.id}`,
+    });
+    return user;
+  });
+
+  if (!result) {
+    const [existingUser] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, id));
+    if (existingUser) {
+      res.status(409).json({ error: "Coin balance would exceed the supported maximum" });
+      return;
+    }
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json({ ...result, credited: amount, reference });
+});
+
 router.patch("/admin/users/:id/role", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   const role = req.body?.role;
