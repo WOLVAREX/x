@@ -228,10 +228,27 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     // ── Step 4: Create build from tarball ───────────────────
     await appendLog(deploymentId, "Starting build on Heroku...");
 
+    // Respect buildpacks explicitly declared by the template owner in app.json.
+    // When none are declared, omit the field so Heroku can autodetect as usual.
+    const declaredBuildpacks = (template.appJson as { buildpacks?: unknown } | null)?.buildpacks;
+    let buildpacks: Array<{ url: string }> | undefined;
+    if (declaredBuildpacks !== undefined) {
+      if (!Array.isArray(declaredBuildpacks) || declaredBuildpacks.some((buildpack) =>
+        !buildpack || typeof buildpack !== "object" || typeof (buildpack as { url?: unknown }).url !== "string" || !(buildpack as { url: string }).url.trim()
+      )) {
+        throw new Error("Template app.json has an invalid buildpacks list; each buildpack must include a URL");
+      }
+      buildpacks = declaredBuildpacks.map((buildpack) => ({ url: (buildpack as { url: string }).url.trim() }));
+      await appendLog(deploymentId, `Using ${buildpacks.length} buildpack(s) declared in template app.json`);
+    } else {
+      await appendLog(deploymentId, "No buildpacks declared; Heroku will autodetect from the source");
+    }
+
     const buildRes = await fetch(`${HEROKU_BASE}/apps/${appName}/builds`, {
       method: "POST",
       headers: await herokuHeaders(),
       body: JSON.stringify({
+        ...(buildpacks ? { buildpacks } : {}),
         source_blob: { url: tarballUrl, version: "HEAD" },
       }),
     });
