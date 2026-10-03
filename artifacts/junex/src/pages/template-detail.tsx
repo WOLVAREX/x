@@ -66,7 +66,7 @@ export default function TemplateDetail() {
   const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [isDeploying, setIsDeploying] = useState(false);
-  const { data: planData } = useQuery<{ plans: HostingPlan[]; coinsPerKes: number }>({ queryKey: ["hosting-plans"], queryFn: async () => { const response = await fetch("/api/plans"); if (!response.ok) throw new Error("Could not load hosting plans"); return response.json(); } });
+  const { data: planData } = useQuery<{ plans: HostingPlan[]; coinsPerKes: number; kesPerCoin: number }>({ queryKey: ["hosting-plans"], queryFn: async () => { const response = await fetch("/api/plans", { cache: "no-store" }); if (!response.ok) throw new Error("Could not load hosting plans"); return response.json(); } });
   const plans = planData?.plans ?? [];
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? plans[0];
 
@@ -293,7 +293,7 @@ export default function TemplateDetail() {
           <DialogHeader><DialogTitle>Choose a hosting plan</DialogTitle><DialogDescription>Plans replace template fees. Coins are charged from your wallet when the bot is deployed.</DialogDescription></DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             {plans.map((plan) => <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border p-4 text-left transition-colors ${selectedPlan?.id === plan.id ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-primary/40"}`}>
-              <span className="font-semibold">{plan.name}</span><span className="mt-1 block text-sm text-muted-foreground">{plan.days} days</span><span className="mt-3 flex items-center gap-1.5 text-primary"><Coins className="h-4 w-4" />{plan.coins} coins</span>
+              <span className="font-semibold">{plan.name}</span><span className="mt-1 block text-sm text-muted-foreground">{plan.days} days</span><span className="mt-3 flex items-center gap-1.5 text-primary"><Coins className="h-4 w-4" />{plan.coins} coins</span><span className="mt-1 block text-xs text-muted-foreground">KES {(plan.coins * (planData?.kesPerCoin ?? 2)).toLocaleString()} equivalent</span>
             </button>)}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 p-3 text-sm"><span>{isLoadingCoins ? "Checking coin balance…" : `Your balance: ${coinBalance.toLocaleString()} coins`}</span><Link href="/wallet" className="text-primary underline-offset-4 hover:underline">Add coins</Link></div>

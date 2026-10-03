@@ -33,11 +33,19 @@ export async function getSetting(key: string): Promise<string> {
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
+  await setSettings({ [key]: value });
+}
+
+export async function setSettings(values: Record<string, string>): Promise<void> {
   if (settingsTableAvailable) {
-    await db
-      .insert(settingsTable)
-      .values({ key, value })
-      .onConflictDoUpdate({ target: settingsTable.key, set: { value } });
+    await db.transaction(async (tx) => {
+      for (const [key, value] of Object.entries(values)) {
+        await tx
+          .insert(settingsTable)
+          .values({ key, value })
+          .onConflictDoUpdate({ target: settingsTable.key, set: { value } });
+      }
+    });
   }
-  settings.set(key, value);
+  for (const [key, value] of Object.entries(values)) settings.set(key, value);
 }

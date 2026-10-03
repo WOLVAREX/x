@@ -1,4 +1,4 @@
-import { getSetting, setSetting } from "./settings";
+import { getSetting, setSetting, setSettings } from "./settings";
 
 export type HostingPlan = { id: string; name: string; days: number; coins: number };
 export const DEFAULT_PLANS: HostingPlan[] = [
@@ -6,15 +6,32 @@ export const DEFAULT_PLANS: HostingPlan[] = [
   { id: "two-weeks", name: "2 Weeks", days: 14, coins: 25 },
   { id: "month", name: "1 Month", days: 30, coins: 35 },
 ];
-export const COINS_PER_KES = 0.5;
+export const DEFAULT_KES_PER_COIN = 2;
+const KES_PER_COIN_SETTING = "KES_PER_COIN";
 
-const PLAN_PRICING_VERSION = "kes-per-coin-2";
+const PLAN_PRICING_VERSION = "kes-per-coin-3";
 let planPricingMigration: Promise<void> | null = null;
+
+export async function getKesPerCoin(): Promise<number> {
+  const saved = Number(await getSetting(KES_PER_COIN_SETTING));
+  return Number.isFinite(saved) && saved >= 0.01 && saved <= 100_000
+    ? saved
+    : DEFAULT_KES_PER_COIN;
+}
+
+export async function getMinimumDepositAmountMinor(): Promise<number> {
+  return Math.max(300, Math.ceil((await getKesPerCoin()) * 100));
+}
+
+export function kesMinorToCoins(amount: number, kesPerCoin: number): number {
+  return Math.floor(amount / (kesPerCoin * 100) + Number.EPSILON * 4);
+}
 
 async function migrateSavedPlanPrices(): Promise<void> {
   if (!planPricingMigration) {
     planPricingMigration = (async () => {
-      if (await getSetting("HOSTING_PLANS_PRICING_VERSION") === PLAN_PRICING_VERSION) return;
+      const savedVersion = await getSetting("HOSTING_PLANS_PRICING_VERSION");
+      if (savedVersion === PLAN_PRICING_VERSION) return;
 
       const saved = await getSetting("HOSTING_PLANS");
       if (saved) {
@@ -24,8 +41,19 @@ async function migrateSavedPlanPrices(): Promise<void> {
             const repriced = parsed.map((item) => {
               if (!item || typeof item !== "object") return item;
               const plan = item as Record<string, unknown>;
-              return Number.isInteger(plan.coins) && Number(plan.coins) > 0
-                ? { ...plan, coins: Math.max(1, Math.round(Number(plan.coins) / 2)) }
+              const days = Number(plan.days);
+              const standardPrice =
+                (plan.id === "week" && days === 7) ? 15
+                  : (plan.id === "two-weeks" && days === 14) ? 25
+                    : (plan.id === "month" && days === 30) ? 35
+                      : undefined;
+              if (standardPrice !== undefined) return { ...plan, coins: standardPrice };
+
+              // Plans saved before the 2 KES/coin rate may still be denominated
+              // at the old rate. Preserve custom plans already migrated in v2.
+              const coins = Number(plan.coins);
+              return Number.isInteger(coins) && coins > 0 && savedVersion !== "kes-per-coin-2"
+                ? { ...plan, coins: Math.max(1, Math.round(coins / 2)) }
                 : plan;
             });
             await setSetting("HOSTING_PLANS", JSON.stringify(repriced));
@@ -63,9 +91,12 @@ export async function findPlan(id: unknown): Promise<HostingPlan | undefined> {
   return (await getPlans()).find((plan) => plan.id === id);
 }
 
-export async function savePlans(value: unknown): Promise<HostingPlan[] | null> {
+export async function savePlans(value: unknown, kesPerCoinValue?: unknown): Promise<HostingPlan[] | null> {
   await migrateSavedPlanPrices();
   if (!Array.isArray(value) || value.length < 1 || value.length > 12) return null;
+  const requestedRate = kesPerCoinValue === undefined ? await getKesPerCoin() : Number(kesPerCoinValue);
+  const kesPerCoin = Math.round(requestedRate * 100) / 100;
+  if (!Number.isFinite(requestedRate) || requestedRate < 0.01 || requestedRate > 100_000 || Math.abs(kesPerCoin - requestedRate) > 1e-8) return null;
   const plans: HostingPlan[] = [];
   for (const item of value) {
     if (!item || typeof item !== "object") return null;
@@ -78,6 +109,6 @@ export async function savePlans(value: unknown): Promise<HostingPlan[] | null> {
     if (plans.some((current) => current.id === id)) return null;
     plans.push({ id, name, days, coins });
   }
-  await setSetting("HOSTING_PLANS", JSON.stringify(plans));
+  await setSettings({ HOSTING_PLANS: JSON.stringify(plans), [KES_PER_COIN_SETTING]: String(kesPerCoin) });
   return plans;
 }

@@ -23,6 +23,8 @@ interface WalletData {
   currency: string;
   transactions: Transaction[];
   coinTransactions: CoinTransaction[];
+  kesPerCoin: number;
+  minimumDepositAmount: number;
 }
 
 interface CoinTransaction {
@@ -92,10 +94,16 @@ export default function WalletPage() {
   const [reference, setReference] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const minimumDepositAmount = data?.minimumDepositAmount ?? 300;
+
+  function minimumDepositText() {
+    const kes = minimumDepositAmount / 100;
+    return kes.toLocaleString(undefined, { minimumFractionDigits: Number.isInteger(kes) ? 0 : 2, maximumFractionDigits: 2 });
+  }
 
   const fetchWallet = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/wallet`, { headers: authHeader() });
+      const res = await fetch(`${API_BASE}/api/wallet`, { headers: authHeader(), cache: "no-store" });
       const json = await res.json();
       setData(json);
     } catch {
@@ -120,7 +128,7 @@ export default function WalletPage() {
 
   async function handleCardDeposit() {
     const amount = getAmount();
-    if (amount < 300) { toast({ title: "Minimum top-up is KES 3", variant: "destructive" }); return; }
+    if (amount < minimumDepositAmount) { toast({ title: `Minimum top-up is KES ${minimumDepositText()}`, variant: "destructive" }); return; }
     setIsProcessing(true);
     try {
       const res = await fetch(`${API_BASE}/api/wallet/deposit/card`, {
@@ -163,7 +171,7 @@ export default function WalletPage() {
   async function handleStkPush() {
     if (!phone.trim()) { toast({ title: "Enter your M-Pesa number", variant: "destructive" }); return; }
     const amount = getAmount();
-    if (amount < 300) { toast({ title: "Minimum top-up is KES 3", variant: "destructive" }); return; }
+    if (amount < minimumDepositAmount) { toast({ title: `Minimum top-up is KES ${minimumDepositText()}`, variant: "destructive" }); return; }
     setIsProcessing(true);
     try {
       const res = await fetch(`${API_BASE}/api/wallet/deposit/mpesa`, {
@@ -261,7 +269,7 @@ export default function WalletPage() {
                     {fmtCoins(data?.balance ?? 0)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-2">
-                    KES 2 top-ups add 1 coin. Hosting plans are paid in coins.
+                    KES {data?.kesPerCoin ?? 2} adds 1 coin. Hosting plans are paid in coins.
                   </p>
                 </div>
                 <div className="h-16 w-16 rounded-2xl bg-primary/20 flex items-center justify-center">
@@ -442,15 +450,16 @@ export default function WalletPage() {
                   placeholder="Enter amount..."
                   value={customAmount}
                   onChange={(e) => { setCustomAmount(e.target.value); setSelectedAmount(null); }}
-                  min={1}
+                  min={minimumDepositAmount / 100}
                   className="text-base"
                 />
+                <p className="text-xs text-muted-foreground">Minimum deposit: KES {minimumDepositText()}</p>
               </div>
               <Button
                 className="w-full gap-2"
                 onClick={() => {
                   const amt = getAmount();
-                  if (amt < 300) { toast({ title: "Minimum deposit is KES 3", variant: "destructive" }); return; }
+                  if (amt < minimumDepositAmount) { toast({ title: `Minimum deposit is KES ${minimumDepositText()}`, variant: "destructive" }); return; }
                   setStep("method");
                 }}
               >

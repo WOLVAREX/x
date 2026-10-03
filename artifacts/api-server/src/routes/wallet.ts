@@ -3,7 +3,7 @@ import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { db, usersTable, walletTransactionsTable, templatesTable, coinTransactionsTable } from "@workspace/db";
 import { eq, desc, sql, and } from "drizzle-orm";
-import { COINS_PER_KES } from "../lib/plans";
+import { getKesPerCoin, getMinimumDepositAmountMinor, kesMinorToCoins } from "../lib/plans";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -31,7 +31,7 @@ function formatPhone(phone: string): string {
 async function creditWallet(userId: number, amount: number, currency: string, reference: string) {
   if (currency !== "KES") throw new Error("Coin deposits currently require KES");
   // Paystack amounts use minor units: 100 = KES 1.
-  const coins = Math.floor(amount * COINS_PER_KES / 100);
+  const coins = kesMinorToCoins(amount, await getKesPerCoin());
   return db.transaction(async (tx) => {
     const [claim] = await tx.update(walletTransactionsTable).set({ status: "success" })
       .where(and(eq(walletTransactionsTable.reference, reference), eq(walletTransactionsTable.status, "pending")))
@@ -52,6 +52,8 @@ async function creditWallet(userId: number, amount: number, currency: string, re
 // ── Get wallet balance + transactions ────────────────────
 router.get("/wallet", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
+  const [kesPerCoin, minimumDepositAmount] = await Promise.all([getKesPerCoin(), getMinimumDepositAmountMinor()]);
+  res.setHeader("Cache-Control", "no-store");
   const [fresh] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
   const transactions = await db
     .select()
@@ -63,14 +65,15 @@ router.get("/wallet", requireAuth, async (req, res): Promise<void> => {
     .where(eq(coinTransactionsTable.userId, user.id))
     .orderBy(desc(coinTransactionsTable.createdAt))
     .limit(50);
-  res.json({ balance: fresh?.coinBalance ?? 0, currency: "COIN", transactions, coinTransactions });
+  res.json({ balance: fresh?.coinBalance ?? 0, currency: "COIN", transactions, coinTransactions, kesPerCoin, minimumDepositAmount });
 });
 
 // ── Initiate card deposit ─────────────────────────────────
 router.post("/wallet/deposit/card", requireAuth, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { amount, currency } = req.body;
-  if (!Number.isInteger(amount) || amount < 300) { res.status(400).json({ error: "Minimum deposit is KES 3" }); return; }
+  const minimumDepositAmount = await getMinimumDepositAmountMinor();
+  if (!Number.isInteger(amount) || amount < minimumDepositAmount) { res.status(400).json({ error: `Minimum deposit is KES ${(minimumDepositAmount / 100).toFixed(2)}` }); return; }
   if (!PAYSTACK_SECRET) { res.status(500).json({ error: "Payment provider not configured" }); return; }
   if (currency && currency !== "KES") { res.status(400).json({ error: "Coin top-ups are charged in KES" }); return; }
 
@@ -112,7 +115,8 @@ router.post("/wallet/deposit/mpesa", requireAuth, async (req, res): Promise<void
   const user = (req as any).user;
   const { phone, amount } = req.body;
   if (!phone || !Number.isInteger(amount)) { res.status(400).json({ error: "phone and a valid amount are required" }); return; }
-  if (amount < 300) { res.status(400).json({ error: "Minimum deposit is KES 3" }); return; }
+  const minimumDepositAmount = await getMinimumDepositAmountMinor();
+  if (!Number.isInteger(amount) || amount < minimumDepositAmount) { res.status(400).json({ error: `Minimum deposit is KES ${(minimumDepositAmount / 100).toFixed(2)}` }); return; }
   if (!PAYSTACK_SECRET) { res.status(500).json({ error: "Payment provider not configured" }); return; }
   const reference = generateReference();
   const formattedPhone = formatPhone(phone);

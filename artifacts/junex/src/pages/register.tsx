@@ -101,7 +101,7 @@ export default function Register() {
                         </select>
                       </FormControl>
                       <FormMessage />
-                      <p className="text-xs text-muted-foreground">All Paystack checkouts use KES. Your wallet earns 1 coin per KES 2.</p>
+                      <p className="text-xs text-muted-foreground">All Paystack checkouts use KES. Check your wallet for the current coin conversion rate.</p>
                     </FormItem>
                   )}
                 />
