@@ -109,15 +109,15 @@ export default function Templates() {
                       <Zap className="h-3.5 w-3.5" /> Deploy
                     </Link>
                   </Button>
-                  <Button size="sm" variant="outline" className="gap-1.5 px-3" asChild>
+                  <Button size="sm" variant="outline" className="gap-1.5 flex-1 px-2" asChild>
                     <a href={template.githubRepo} target="_blank" rel="noopener noreferrer">
-                      <Github className="h-3.5 w-3.5" />
+                      <Github className="h-3.5 w-3.5" /> Git
                     </a>
                   </Button>
                   {template.pairSiteUrl && (
-                    <Button size="sm" variant="outline" className="gap-1.5 px-3" asChild>
+                    <Button size="sm" variant="outline" className="gap-1.5 flex-1 px-2" asChild>
                       <a href={template.pairSiteUrl} target="_blank" rel="noopener noreferrer">
-                        <Globe className="h-3.5 w-3.5" />
+                        <Globe className="h-3.5 w-3.5" /> Pair
                       </a>
                     </Button>
                   )}
