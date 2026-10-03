@@ -3,6 +3,7 @@ import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { db, usersTable, walletTransactionsTable, templatesTable, coinTransactionsTable } from "@workspace/db";
 import { eq, desc, sql, and } from "drizzle-orm";
+import { COINS_PER_KES } from "../lib/plans";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -29,7 +30,8 @@ function formatPhone(phone: string): string {
 
 async function creditWallet(userId: number, amount: number, currency: string, reference: string) {
   if (currency !== "KES") throw new Error("Coin deposits currently require KES");
-  const coins = Math.floor(amount * 5 / 100);
+  // Paystack amounts use minor units: 100 = KES 1.
+  const coins = Math.floor(amount * COINS_PER_KES / 100);
   return db.transaction(async (tx) => {
     const [claim] = await tx.update(walletTransactionsTable).set({ status: "success" })
       .where(and(eq(walletTransactionsTable.reference, reference), eq(walletTransactionsTable.status, "pending")))
@@ -57,7 +59,11 @@ router.get("/wallet", requireAuth, async (req, res): Promise<void> => {
     .where(eq(walletTransactionsTable.userId, user.id))
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(50);
-  res.json({ balance: fresh?.coinBalance ?? 0, currency: "COIN", transactions });
+  const coinTransactions = await db.select().from(coinTransactionsTable)
+    .where(eq(coinTransactionsTable.userId, user.id))
+    .orderBy(desc(coinTransactionsTable.createdAt))
+    .limit(50);
+  res.json({ balance: fresh?.coinBalance ?? 0, currency: "COIN", transactions, coinTransactions });
 });
 
 // ── Initiate card deposit ─────────────────────────────────

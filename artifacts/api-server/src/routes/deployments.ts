@@ -369,21 +369,17 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
       .where(and(eq(deploymentsTable.userId, user.id), sql`lower(trim(${deploymentsTable.botName})) = ${normalizedBotName}`)).limit(1);
     if (existingName) return { duplicateName: true as const };
 
-    if (user.role !== "admin") {
-      const [updatedUser] = await tx.update(usersTable)
-        .set({ coinBalance: sql`${usersTable.coinBalance} - ${plan.coins}` })
-        .where(and(eq(usersTable.id, user.id), gte(usersTable.coinBalance, plan.coins)))
-        .returning({ coinBalance: usersTable.coinBalance });
-      if (!updatedUser) return null;
-    }
+    const [updatedUser] = await tx.update(usersTable)
+      .set({ coinBalance: sql`${usersTable.coinBalance} - ${plan.coins}` })
+      .where(and(eq(usersTable.id, user.id), gte(usersTable.coinBalance, plan.coins)))
+      .returning({ coinBalance: usersTable.coinBalance });
+    if (!updatedUser) return null;
     const [deployment] = await tx.insert(deploymentsTable).values({
       userId: user.id, templateId, botName, planId: plan.id, expiresAt,
       status: "building", envVars: envVars ?? {},
       logs: [`${ts()} Deployment request received`, `${ts()} Template: ${template.name}`, `${ts()} Bot name: ${botName}`, `${ts()} Hosting plan: ${plan.name}`],
     }).returning();
-    if (user.role !== "admin") {
-      await tx.insert(coinTransactionsTable).values({ userId: user.id, type: "debit", amount: plan.coins, reference: `DEPLOY-${deployment.id}`, description: `${plan.name} hosting plan for ${botName}` });
-    }
+    await tx.insert(coinTransactionsTable).values({ userId: user.id, type: "debit", amount: plan.coins, reference: `DEPLOY-${deployment.id}`, description: `${plan.name} hosting plan for ${botName}` });
     return { deployment };
   });
   if (!result) {
@@ -743,7 +739,7 @@ router.post("/recovery", requireAuth, async (req, res): Promise<void> => {
   if (!stillValid && !plan) { res.status(400).json({ error: "The old plan expired. Select a plan to recover this bot" }); return; }
   const expiresAt = stillValid ? row.deployment.expiresAt! : new Date(Date.now() + plan!.days * 86_400_000);
   const result = await db.transaction(async (tx) => {
-    if (!stillValid && user.role !== "admin") {
+    if (!stillValid) {
       const [account] = await tx.update(usersTable).set({ coinBalance: sql`${usersTable.coinBalance} - ${plan!.coins}` })
         .where(and(eq(usersTable.id, user.id), gte(usersTable.coinBalance, plan!.coins))).returning({ id: usersTable.id });
       if (!account) return null;

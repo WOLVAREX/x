@@ -16,7 +16,7 @@ router.get("/admin/plans", requireAdmin, async (_req, res): Promise<void> => {
 router.put("/admin/plans", requireAdmin, async (req, res): Promise<void> => {
   const plans = await savePlans(req.body?.plans);
   if (!plans) {
-    res.status(400).json({ error: "Add 1–12 plans with unique IDs, a name, 1–365 days, and 1–100000 coins" });
+    res.status(400).json({ error: "Add 1–12 plans with unique IDs, a name, 1–365 days, and 1–500000 coins" });
     return;
   }
   res.json({ plans, coinsPerKes: COINS_PER_KES, chargeCurrency: "KES" });

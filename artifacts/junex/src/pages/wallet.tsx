@@ -22,6 +22,16 @@ interface WalletData {
   balance: number;
   currency: string;
   transactions: Transaction[];
+  coinTransactions: CoinTransaction[];
+}
+
+interface CoinTransaction {
+  id: number;
+  type: "credit" | "debit";
+  amount: number;
+  description: string;
+  reference: string;
+  createdAt: string;
 }
 
 interface Transaction {
@@ -251,7 +261,7 @@ export default function WalletPage() {
                     {fmtCoins(data?.balance ?? 0)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-2">
-                    KES top-ups add 5 coins per KES 1. Hosting plans are paid in coins.
+                    KES 2 top-ups add 1 coin. Hosting plans are paid in coins.
                   </p>
                 </div>
                 <div className="h-16 w-16 rounded-2xl bg-primary/20 flex items-center justify-center">
@@ -273,7 +283,7 @@ export default function WalletPage() {
                       (data?.transactions ?? [])
                         .filter(t => t.type === "deposit" && t.status === "success")
                         .reduce((s, t) => s + t.amount, 0),
-                      data?.currency
+                      "KES"
                     )}
                   </p>
                 </CardContent>
@@ -286,12 +296,7 @@ export default function WalletPage() {
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
                   <p className="text-xl font-bold">
-                    {fmt(
-                      (data?.transactions ?? [])
-                        .filter(t => t.type === "deduction")
-                        .reduce((s, t) => s + t.amount, 0),
-                      data?.currency
-                    )}
+                    {fmtCoins((data?.coinTransactions ?? []).filter(t => t.type === "debit").reduce((s, t) => s + t.amount, 0))}
                   </p>
                 </CardContent>
               </Card>
@@ -302,7 +307,7 @@ export default function WalletPage() {
                   <Receipt className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
-                  <p className="text-xl font-bold">{data?.transactions?.length ?? 0}</p>
+                  <p className="text-xl font-bold">{(data?.transactions?.length ?? 0) + (data?.coinTransactions?.length ?? 0)}</p>
                 </CardContent>
               </Card>
             </div>
@@ -367,6 +372,23 @@ export default function WalletPage() {
                 )}
               </CardContent>
             </Card>
+            <Card className="border-border/40 mt-6">
+              <CardHeader className="p-4 md:p-6">
+                <CardTitle className="text-base flex items-center gap-2"><Receipt className="h-4 w-4" /> Coin activity</CardTitle>
+                <CardDescription>Coin top-ups and charges for deployments</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                {!data?.coinTransactions?.length ? <p className="px-6 py-8 text-center text-sm text-muted-foreground">No coin activity yet.</p> : <div className="divide-y divide-border/40">
+                  {data.coinTransactions.map((tx) => <div key={tx.id} className="flex items-center gap-4 px-4 md:px-6 py-4">
+                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${tx.type === "credit" ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+                      {tx.type === "credit" ? <ArrowUpRight className="h-5 w-5 text-emerald-500" /> : <ArrowDownLeft className="h-5 w-5 text-red-400" />}
+                    </div>
+                    <div className="min-w-0 flex-1"><p className="font-medium text-sm">{tx.description}</p><p className="mt-0.5 text-xs text-muted-foreground">{format(new Date(tx.createdAt), "MMM d, yyyy h:mm a")}</p></div>
+                    <p className={`shrink-0 text-sm font-semibold ${tx.type === "credit" ? "text-emerald-500" : "text-red-400"}`}>{tx.type === "credit" ? "+" : "−"}{fmtCoins(tx.amount)}</p>
+                  </div>)}
+                </div>}
+              </CardContent>
+            </Card>
           </>
         )}
       </div>
@@ -428,7 +450,7 @@ export default function WalletPage() {
                 className="w-full gap-2"
                 onClick={() => {
                   const amt = getAmount();
-                  if (amt < 100) { toast({ title: "Minimum deposit is KES 1", variant: "destructive" }); return; }
+                  if (amt < 300) { toast({ title: "Minimum deposit is KES 3", variant: "destructive" }); return; }
                   setStep("method");
                 }}
               >
