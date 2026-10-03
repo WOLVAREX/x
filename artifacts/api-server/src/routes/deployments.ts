@@ -129,15 +129,22 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
   const appName = sanitizeAppName(botName, deploymentId);
 
   try {
+    const manifestStack = (template.appJson as { stack?: unknown } | null)?.stack;
+    if (manifestStack !== undefined && (typeof manifestStack !== "string" || !manifestStack.trim())) {
+      throw new Error("Template app.json has an invalid stack; expected a Heroku stack name");
+    }
+    const requestedStack = typeof manifestStack === "string" ? manifestStack.trim() : undefined;
+
     // ── Step 1: Create Heroku app ────────────────────────────
     await appendLog(deploymentId, "Initializing deployment...");
     await appendLog(deploymentId, `Creating Heroku app: ${appName}`);
+    if (requestedStack) await appendLog(deploymentId, `Requesting Heroku stack from app.json: ${requestedStack}`);
 
     const teamName = await getHerokuTeam();
     const createRes = await fetch(`${HEROKU_BASE}${teamName ? "/teams/apps" : "/apps"}`, {
       method: "POST",
       headers: await herokuHeaders(),
-      body: JSON.stringify({ name: appName, ...(teamName ? { team: teamName } : {}) }),
+      body: JSON.stringify({ name: appName, ...(teamName ? { team: teamName } : {}), ...(requestedStack ? { stack: requestedStack } : {}) }),
     });
     const createData = await createRes.json() as any;
 
