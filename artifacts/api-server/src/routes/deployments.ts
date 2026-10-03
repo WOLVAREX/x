@@ -137,7 +137,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     const createRes = await fetch(`${HEROKU_BASE}${teamName ? "/teams/apps" : "/apps"}`, {
       method: "POST",
       headers: await herokuHeaders(),
-      body: JSON.stringify({ name: appName, stack: "heroku-22", ...(teamName ? { team: teamName } : {}) }),
+      body: JSON.stringify({ name: appName, ...(teamName ? { team: teamName } : {}) }),
     });
     const createData = await createRes.json() as any;
 
@@ -149,6 +149,9 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     }
 
     await appendLog(deploymentId, `App created: ${createData.name}.herokuapp.com`);
+    if (typeof createData.stack?.name === "string") {
+      await appendLog(deploymentId, `Heroku selected stack: ${createData.stack.name}`);
+    }
 
     // Save herokuAppId immediately
     await db.update(deploymentsTable)
