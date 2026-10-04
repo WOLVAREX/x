@@ -125,6 +125,79 @@ async function appendLog(deploymentId: number, line: string) {
     .where(eq(deploymentsTable.id, deploymentId));
 }
 
+async function appendHerokuBuildOutput(deploymentId: number, outputStreamUrl: unknown): Promise<void> {
+  if (typeof outputStreamUrl !== "string") {
+    await appendLog(deploymentId, "Heroku did not provide a build output stream URL");
+    return;
+  }
+
+  let streamUrl: URL;
+  try {
+    streamUrl = new URL(outputStreamUrl);
+  } catch {
+    await appendLog(deploymentId, "Heroku returned an invalid build output stream URL");
+    return;
+  }
+  if (streamUrl.protocol !== "https:" || streamUrl.hostname !== "build-output.heroku.com") {
+    await appendLog(deploymentId, "Heroku returned an unexpected build output stream host");
+    return;
+  }
+
+  try {
+    const response = await fetch(streamUrl, { signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) {
+      await appendLog(deploymentId, `Could not retrieve Heroku build output (${response.status})`);
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      await appendLog(deploymentId, "Heroku build output stream was empty");
+      return;
+    }
+
+    const chunks: Uint8Array[] = [];
+    let byteLength = 0;
+    const maxBytes = 128 * 1024;
+    while (byteLength < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = maxBytes - byteLength;
+      const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
+      chunks.push(chunk);
+      byteLength += chunk.byteLength;
+      if (chunk.byteLength < value.byteLength) {
+        await reader.cancel();
+        break;
+      }
+    }
+    if (byteLength >= maxBytes) await reader.cancel();
+
+    const bytes = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const output = new TextDecoder().decode(bytes)
+      .replace(/\u0000/g, "")
+      .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+      .trim();
+    if (!output) {
+      await appendLog(deploymentId, "Heroku build output was empty");
+      return;
+    }
+
+    const lines = output.split(/\r?\n/).filter(Boolean);
+    const selected = lines.slice(-60);
+    await appendLog(deploymentId, `Heroku build output (last ${selected.length} lines${byteLength >= maxBytes ? ", capped at 128 KB" : ""}):`);
+    for (const line of selected) await appendLog(deploymentId, line.slice(0, 2_000));
+  } catch (error) {
+    const reason = error instanceof Error && error.name === "TimeoutError" ? "timed out" : "could not be read";
+    await appendLog(deploymentId, `Heroku build output ${reason}`);
+  }
+}
+
 async function herokuDeploy(deploymentId: number, template: typeof templatesTable.$inferSelect, botName: string, envVars: Record<string, string>) {
   const appName = sanitizeAppName(botName, deploymentId);
 
@@ -302,8 +375,8 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     }
 
     if (buildStatus !== "succeeded") {
+      await appendHerokuBuildOutput(deploymentId, buildData.output_stream_url);
       await appendLog(deploymentId, `ERROR: Build ${buildStatus} after ${attempts * 5}s`);
-      await appendLog(deploymentId, "Check your app.json and repository for errors");
       await db.update(deploymentsTable).set({ status: "error" }).where(eq(deploymentsTable.id, deploymentId));
       return;
     }
