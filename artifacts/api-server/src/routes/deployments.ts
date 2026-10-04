@@ -10,6 +10,19 @@ import { getBotHealth } from "../lib/bot-health";
 const router: IRouter = Router();
 
 const HEROKU_BASE = "https://api.heroku.com";
+const OFFICIAL_HEROKU_BUILDPACKS: Record<string, string> = {
+  "heroku/clojure": "https://github.com/heroku/heroku-buildpack-clojure",
+  "heroku/dotnet": "https://github.com/heroku/heroku-buildpack-dotnet",
+  "heroku/go": "https://github.com/heroku/heroku-buildpack-go",
+  "heroku/gradle": "https://github.com/heroku/heroku-buildpack-gradle",
+  "heroku/java": "https://github.com/heroku/heroku-buildpack-java",
+  "heroku/jvm": "https://github.com/heroku/heroku-buildpack-jvm",
+  "heroku/nodejs": "https://github.com/heroku/heroku-buildpack-nodejs",
+  "heroku/php": "https://github.com/heroku/heroku-buildpack-php",
+  "heroku/python": "https://github.com/heroku/heroku-buildpack-python",
+  "heroku/ruby": "https://github.com/heroku/heroku-buildpack-ruby",
+  "heroku/scala": "https://github.com/heroku/heroku-buildpack-scala",
+};
 
 async function getHerokuKey(): Promise<string> {
   return (await getSetting("HEROKU_TEAM_API_KEY")) || (await getSetting("HEROKU_API_KEY"));
@@ -311,14 +324,23 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     // Respect buildpacks explicitly declared by the template owner in app.json.
     // When none are declared, omit the field so Heroku can autodetect as usual.
     const declaredBuildpacks = (template.appJson as { buildpacks?: unknown } | null)?.buildpacks;
-    let buildpacks: Array<{ url: string }> | undefined;
+    let buildpacks: Array<{ url: string; name?: string }> | undefined;
     if (declaredBuildpacks !== undefined) {
       if (!Array.isArray(declaredBuildpacks) || declaredBuildpacks.some((buildpack) =>
         !buildpack || typeof buildpack !== "object" || typeof (buildpack as { url?: unknown }).url !== "string" || !(buildpack as { url: string }).url.trim()
       )) {
         throw new Error("Template app.json has an invalid buildpacks list; each buildpack must include a URL");
       }
-      buildpacks = declaredBuildpacks.map((buildpack) => ({ url: (buildpack as { url: string }).url.trim() }));
+      buildpacks = declaredBuildpacks.map((buildpack) => {
+        const declaredUrl = (buildpack as { url: string }).url.trim();
+        const officialUrl = OFFICIAL_HEROKU_BUILDPACKS[declaredUrl.toLowerCase()];
+        return officialUrl ? { name: declaredUrl, url: officialUrl } : { url: declaredUrl };
+      });
+      for (const buildpack of buildpacks) {
+        if (buildpack.name) {
+          await appendLog(deploymentId, `Resolved official buildpack ${buildpack.name} to ${buildpack.url}`);
+        }
+      }
       await appendLog(deploymentId, `Using ${buildpacks.length} buildpack(s) declared in template app.json`);
     } else {
       await appendLog(deploymentId, "No buildpacks declared; Heroku will autodetect from the source");
