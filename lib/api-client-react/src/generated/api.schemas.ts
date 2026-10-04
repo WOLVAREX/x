@@ -183,6 +183,9 @@ export interface AdminStats {
   totalDeployments: number;
   onlineDeployments: number;
   totalTemplates: number;
+  totalRevenue: number;
+  totalPayments: number;
+  revenueByCurrency: { currency: string; amount: number }[];
 }
 
 export interface FetchAppJsonInput {

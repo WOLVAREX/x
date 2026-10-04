@@ -7,6 +7,7 @@
  */
 
 export * from './adminStats';
+export * from './adminStatsRevenueByCurrencyItem';
 export * from './appJsonResult';
 export * from './appJsonResultEnv';
 export * from './appJsonResultRaw';

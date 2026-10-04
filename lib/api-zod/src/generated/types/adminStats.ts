@@ -5,10 +5,16 @@
  * JuneXDeployment API — Discord bot hosting platform
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminStatsRevenueByCurrencyItem } from './adminStatsRevenueByCurrencyItem';
 
 export interface AdminStats {
   totalUsers: number;
   totalDeployments: number;
   onlineDeployments: number;
   totalTemplates: number;
+  /** Successful KES receipts in the currency's smallest unit. */
+  totalRevenue: number;
+  /** Count of successful payments and wallet deposits. */
+  totalPayments: number;
+  revenueByCurrency: AdminStatsRevenueByCurrencyItem[];
 }

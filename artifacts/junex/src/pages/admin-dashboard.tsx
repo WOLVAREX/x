@@ -42,9 +42,21 @@ type AdminTransaction = {
   type: string; amount: number; currency: string; status: string; method: string;
   reference: string | null; description: string; createdAt: string;
 };
+type AdminUserDetails = {
+  user: { id: number; username: string; email: string; role: string; suspended: boolean; country: string; coinBalance: number; walletBalance: number; createdAt: string };
+  coinSummary: { current: number; credited: number; used: number };
+  coinTransactions: Array<{ id: number; type: string; amount: number; description: string; reference: string; createdAt: string }>;
+  walletTransactions: Array<{ id: number; type: string; amount: number; currency: string; status: string; method: string | null; description: string; createdAt: string }>;
+  payments: Array<{ id: number; amount: number; currency: string; status: string; method: string; templateName: string; createdAt: string }>;
+  deployments: Array<{ id: number; botName: string; templateName: string; status: string; planId: string | null; createdAt: string }>;
+};
 function authHeader() {
   const token = localStorage.getItem("junex_token");
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+}
+
+function formatMinorAmount(amount: number, currency: string) {
+  return `${currency} ${(amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -67,7 +79,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function StatCard({ title, value, icon: Icon, gradient, sub }: {
-  title: string; value: number | undefined; icon: React.ElementType; gradient: string; sub?: string;
+  title: string; value: number | string | undefined; icon: React.ElementType; gradient: string; sub?: string;
 }) {
   return (
     <Card className="relative overflow-hidden border-border/40">
@@ -105,6 +117,10 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("templates");
   const [userSearch, setUserSearch] = useState("");
+  const [viewingUserId, setViewingUserId] = useState<number | null>(null);
+  const [userDetails, setUserDetails] = useState<AdminUserDetails | null>(null);
+  const [isLoadingUserDetails, setIsLoadingUserDetails] = useState(false);
+  const [transactionFilter, setTransactionFilter] = useState<"all" | "cash" | "credits" | "usage">("all");
   const [coinCreditUser, setCoinCreditUser] = useState<{ id: number; username: string; email: string; coinBalance: number } | null>(null);
   const [coinCreditAmount, setCoinCreditAmount] = useState("");
   const [isCreditingCoins, setIsCreditingCoins] = useState(false);
@@ -167,7 +183,10 @@ export default function AdminDashboard() {
     };
   }, [herokuTeamKey]);
 
-  const { data: stats } = useGetAdminStats();
+  const { data: stats } = useGetAdminStats({
+    query: { queryKey: getGetAdminStatsQueryKey(), refetchInterval: 30_000 },
+    request: { cache: "no-store" },
+  });
   const { data: users, isLoading: isLoadingUsers } = useListAdminUsers();
   const { data: deployments, isLoading: isLoadingDeployments, isError: hasDeploymentsError, error: deploymentsError, refetch: refetchDeployments, isFetching: isFetchingDeployments } = useListAdminDeployments({
     query: { queryKey: getListAdminDeploymentsQueryKey(), refetchInterval: 15_000 },
@@ -230,6 +249,22 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: getListAdminDeploymentsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
     } else { toast({ title: "Failed to delete user", variant: "destructive" }); }
+  }
+
+  async function handleViewUserDetails(userId: number) {
+    setViewingUserId(userId);
+    setUserDetails(null);
+    setIsLoadingUserDetails(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/users/${userId}/details`, { headers: authHeader(), cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Could not load user details");
+      setUserDetails(data);
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : "Could not load user details", variant: "destructive" });
+    } finally {
+      setIsLoadingUserDetails(false);
+    }
   }
 
   async function handleCreditCoins() {
@@ -359,6 +394,13 @@ export default function AdminDashboard() {
   const onlineRate = stats
     ? stats.totalDeployments > 0 ? Math.round((stats.onlineDeployments / stats.totalDeployments) * 100) : 100
     : null;
+  const allAdminTransactions = transactionsData?.transactions ?? [];
+  const visibleAdminTransactions = allAdminTransactions.filter((transaction) => {
+    if (transactionFilter === "cash") return (transaction.kind === "wallet" && transaction.type === "deposit") || transaction.kind === "payment";
+    if (transactionFilter === "credits") return transaction.kind === "coins" && transaction.type === "credit";
+    if (transactionFilter === "usage") return transaction.kind === "coins" && transaction.type === "debit";
+    return true;
+  });
 
   const quickActions = [
     { label: "Add Template", icon: Plus, href: "/admin/templates/new", color: "text-primary" },
@@ -391,7 +433,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Stats */}
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <StatCard title="Registered Users" value={stats?.totalUsers} icon={Users}
                 gradient="bg-gradient-to-br from-violet-600 to-purple-800" sub="Total accounts" />
               <StatCard title="Total Deployments" value={stats?.totalDeployments} icon={Server}
@@ -401,6 +443,8 @@ export default function AdminDashboard() {
                 sub={onlineRate !== null ? `${onlineRate}% uptime rate` : undefined} />
               <StatCard title="Bot Templates" value={stats?.totalTemplates} icon={LayoutTemplate}
                 gradient="bg-gradient-to-br from-amber-600 to-orange-800" sub="Available in gallery" />
+              <StatCard title="Total Revenue" value={stats ? formatMinorAmount(stats.totalRevenue, "KES") : undefined} icon={DollarSign}
+                gradient="bg-gradient-to-br from-cyan-600 to-blue-800" sub={`${stats?.totalPayments ?? 0} successful receipts`} />
             </div>
 
             {/* Quick Actions */}
@@ -703,7 +747,7 @@ export default function AdminDashboard() {
                                       </AvatarFallback>
                                     </Avatar>
                                     <div>
-                                      <div className="font-medium text-sm">{u.username}</div>
+                                      <Button variant="link" className="h-auto p-0 text-sm font-medium" onClick={() => void handleViewUserDetails(u.id)}>{u.username}</Button>
                                       <div className="text-xs text-muted-foreground font-mono">#{u.id}</div>
                                     </div>
                                   </div>
@@ -808,6 +852,17 @@ export default function AdminDashboard() {
                       <RefreshCw className={`h-3.5 w-3.5 ${isLoadingTransactions ? "animate-spin" : ""}`} /> Refresh
                     </Button>
                   </CardHeader>
+                  <div className="flex flex-wrap gap-2 px-6 pb-4">
+                    {([
+                      ["all", "All transactions"],
+                      ["cash", "Deposits & payments"],
+                      ["credits", "Coin credits"],
+                      ["usage", "Coin usage"],
+                    ] as const).map(([filter, label]) => (
+                      <Button key={filter} size="sm" variant={transactionFilter === filter ? "default" : "outline"}
+                        onClick={() => setTransactionFilter(filter)}>{label}</Button>
+                    ))}
+                  </div>
                   <CardContent className="p-0">
                     {isLoadingTransactions ? (
                       <div className="flex h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
@@ -825,9 +880,9 @@ export default function AdminDashboard() {
                             <TableHead>Status</TableHead><TableHead>Method</TableHead><TableHead>Reference</TableHead><TableHead>Date</TableHead>
                           </TableRow></TableHeader>
                           <TableBody>
-                            {transactionsData?.transactions.map((transaction) => (
+                            {visibleAdminTransactions.map((transaction) => (
                               <TableRow key={transaction.id} className="border-border/40">
-                                <TableCell className="pl-6"><div className="font-medium text-sm">{transaction.username}</div><div className="text-xs text-muted-foreground">{transaction.email}</div></TableCell>
+                                <TableCell className="pl-6"><Button variant="link" className="h-auto p-0 text-sm font-medium" onClick={() => void handleViewUserDetails(transaction.userId)}>{transaction.username}</Button><div className="text-xs text-muted-foreground">{transaction.email}</div></TableCell>
                                 <TableCell><div className="text-sm capitalize">{transaction.type}</div><div className="max-w-56 truncate text-xs text-muted-foreground" title={transaction.description}>{transaction.description}</div></TableCell>
                                 <TableCell className="whitespace-nowrap font-mono text-sm">{transaction.currency === "COIN" ? `${transaction.type === "debit" ? "−" : "+"}${transaction.amount} coins` : `${transaction.currency} ${(transaction.amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</TableCell>
                                 <TableCell><Badge variant="outline" className={transaction.status === "success" ? "border-emerald-500/30 text-emerald-400" : transaction.status === "failed" ? "border-red-500/30 text-red-400" : "border-amber-500/30 text-amber-400"}>{transaction.status}</Badge></TableCell>
@@ -836,7 +891,7 @@ export default function AdminDashboard() {
                                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{format(new Date(transaction.createdAt), "MMM d, yyyy HH:mm")}</TableCell>
                               </TableRow>
                             ))}
-                            {!transactionsData?.transactions.length && <TableRow><TableCell colSpan={7} className="py-12 text-center text-muted-foreground"><Coins className="mx-auto mb-2 h-8 w-8 opacity-30" />No transactions recorded yet.</TableCell></TableRow>}
+                            {!visibleAdminTransactions.length && <TableRow><TableCell colSpan={7} className="py-12 text-center text-muted-foreground"><Coins className="mx-auto mb-2 h-8 w-8 opacity-30" />{allAdminTransactions.length ? "No transactions in this group." : "No transactions recorded yet."}</TableCell></TableRow>}
                           </TableBody>
                         </Table>
                       </div>
@@ -1031,18 +1086,22 @@ export default function AdminDashboard() {
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                             <div className="p-4 rounded-xl bg-muted/30 border border-border/40">
                               <p className="text-2xl font-bold text-primary">
-                                KES {((health.payments.totalRevenue ?? 0) / 100).toLocaleString()}
+                                {formatMinorAmount(health.payments.totalRevenue ?? 0, "KES")}
                               </p>
                               <p className="text-xs text-muted-foreground mt-1">Total Revenue</p>
                             </div>
+                            {(health.payments.revenueByCurrency ?? []).filter((entry: { currency: string }) => entry.currency !== "KES").map((entry: { currency: string; amount: number }) => (
+                              <div key={entry.currency} className="p-4 rounded-xl bg-muted/30 border border-border/40">
+                                <p className="text-2xl font-bold">{formatMinorAmount(entry.amount, entry.currency)}</p>
+                                <p className="text-xs text-muted-foreground mt-1">Revenue in {entry.currency}</p>
+                              </div>
+                            ))}
                             <div className="p-4 rounded-xl bg-muted/30 border border-border/40">
-                              <p className="text-2xl font-bold">
-                                KES {((health.payments.totalWalletBalance ?? 0) / 100).toLocaleString()}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-1">Total Wallet Balance</p>
+                              <p className="text-2xl font-bold">{(health.payments.totalCoinBalance ?? 0).toLocaleString()} coins</p>
+                              <p className="text-xs text-muted-foreground mt-1">Coins held by users</p>
                             </div>
                             <div className="p-4 rounded-xl bg-muted/30 border border-border/40">
                               <p className="text-2xl font-bold text-amber-400">{health.payments.pendingPayments}</p>
@@ -1098,6 +1157,72 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={viewingUserId !== null} onOpenChange={(open) => { if (!open) { setViewingUserId(null); setUserDetails(null); } }}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><UserCircle2 className="h-5 w-5 text-primary" />User account details</DialogTitle>
+            </DialogHeader>
+            {isLoadingUserDetails ? (
+              <div className="flex h-48 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>
+            ) : userDetails ? (
+              <div className="space-y-6">
+                <div className="flex flex-col justify-between gap-3 rounded-xl border border-border/60 bg-muted/20 p-4 sm:flex-row sm:items-center">
+                  <div><h3 className="text-lg font-semibold">{userDetails.user.username}</h3><p className="text-sm text-muted-foreground">{userDetails.user.email}</p></div>
+                  <div className="flex flex-wrap gap-2"><Badge variant="outline">{userDetails.user.role}</Badge><Badge variant="outline">{userDetails.user.country}</Badge><Badge variant="outline">{userDetails.user.suspended ? "Suspended" : "Active"}</Badge><span className="text-xs text-muted-foreground">Joined {format(new Date(userDetails.user.createdAt), "MMM d, yyyy")}</span></div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {[
+                    { label: "Current coins", value: userDetails.coinSummary.current.toLocaleString(), color: "text-amber-400" },
+                    { label: "Coins credited", value: userDetails.coinSummary.credited.toLocaleString(), color: "text-emerald-400" },
+                    { label: "Coins used", value: userDetails.coinSummary.used.toLocaleString(), color: "text-blue-400" },
+                    { label: "Bots deployed", value: userDetails.deployments.length.toString(), color: "text-primary" },
+                  ].map((item) => <div key={item.label} className="rounded-lg border border-border/60 bg-muted/20 p-3"><p className="text-xs text-muted-foreground">{item.label}</p><p className={`mt-1 text-xl font-bold ${item.color}`}>{item.value}</p></div>)}
+                </div>
+
+                <section className="space-y-2">
+                  <h3 className="font-semibold">Recent coin activity</h3>
+                  <div className="overflow-x-auto rounded-lg border border-border/60">
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Description</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {userDetails.coinTransactions.map((transaction) => <TableRow key={transaction.id}><TableCell><Badge variant="outline" className={transaction.type === "credit" ? "border-emerald-500/30 text-emerald-400" : "border-blue-500/30 text-blue-400"}>{transaction.type === "debit" ? "usage" : "credit"}</Badge></TableCell><TableCell className="whitespace-nowrap font-mono">{transaction.type === "debit" ? "−" : "+"}{transaction.amount} coins</TableCell><TableCell className="max-w-72 truncate" title={transaction.description}>{transaction.description}</TableCell><TableCell className="whitespace-nowrap text-xs text-muted-foreground">{format(new Date(transaction.createdAt), "MMM d, yyyy HH:mm")}</TableCell></TableRow>)}
+                        {!userDetails.coinTransactions.length && <TableRow><TableCell colSpan={4} className="py-6 text-center text-muted-foreground">No coin activity recorded.</TableCell></TableRow>}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </section>
+
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <section className="space-y-2">
+                    <h3 className="font-semibold">Wallet transactions</h3>
+                    <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/60 p-3">
+                      {userDetails.walletTransactions.map((transaction) => <div key={transaction.id} className="flex items-start justify-between gap-3 border-b border-border/40 pb-2 text-sm last:border-0"><div className="min-w-0"><p className="font-medium capitalize">{transaction.type} · {transaction.method ?? "wallet"}</p><p className="truncate text-xs text-muted-foreground">{transaction.description}</p><p className="text-xs text-muted-foreground">{format(new Date(transaction.createdAt), "MMM d, yyyy HH:mm")}</p></div><div className="text-right"><p className="whitespace-nowrap font-mono">{formatMinorAmount(transaction.amount, transaction.currency)}</p><Badge variant="outline" className="mt-1">{transaction.status}</Badge></div></div>)}
+                      {!userDetails.walletTransactions.length && <p className="py-5 text-center text-sm text-muted-foreground">No wallet transactions.</p>}
+                    </div>
+                  </section>
+                  <section className="space-y-2">
+                    <h3 className="font-semibold">Template payments</h3>
+                    <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border/60 p-3">
+                      {userDetails.payments.map((payment) => <div key={payment.id} className="flex items-start justify-between gap-3 border-b border-border/40 pb-2 text-sm last:border-0"><div className="min-w-0"><p className="truncate font-medium">{payment.templateName}</p><p className="text-xs capitalize text-muted-foreground">{payment.method} · {payment.status}</p><p className="text-xs text-muted-foreground">{format(new Date(payment.createdAt), "MMM d, yyyy HH:mm")}</p></div><p className="whitespace-nowrap font-mono">{formatMinorAmount(payment.amount, payment.currency)}</p></div>)}
+                      {!userDetails.payments.length && <p className="py-5 text-center text-sm text-muted-foreground">No template payments.</p>}
+                    </div>
+                  </section>
+                </div>
+
+                <section className="space-y-2">
+                  <h3 className="font-semibold">Deployments</h3>
+                  <div className="overflow-x-auto rounded-lg border border-border/60">
+                    <Table><TableHeader><TableRow><TableHead>Bot</TableHead><TableHead>Template</TableHead><TableHead>Plan</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead></TableRow></TableHeader>
+                      <TableBody>{userDetails.deployments.map((deployment) => <TableRow key={deployment.id}><TableCell className="font-medium">{deployment.botName}</TableCell><TableCell>{deployment.templateName}</TableCell><TableCell>{deployment.planId ?? "—"}</TableCell><TableCell><StatusBadge status={deployment.status} /></TableCell><TableCell className="whitespace-nowrap text-xs text-muted-foreground">{format(new Date(deployment.createdAt), "MMM d, yyyy")}</TableCell></TableRow>)}{!userDetails.deployments.length && <TableRow><TableCell colSpan={5} className="py-6 text-center text-muted-foreground">No deployments recorded.</TableCell></TableRow>}</TableBody>
+                    </Table>
+                  </div>
+                </section>
+              </div>
+            ) : null}
           </DialogContent>
         </Dialog>
 

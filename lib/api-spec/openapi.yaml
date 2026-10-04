@@ -879,7 +879,7 @@ components:
 
     AdminStats:
       type: object
-      required: [totalUsers, totalDeployments, onlineDeployments, totalTemplates]
+      required: [totalUsers, totalDeployments, onlineDeployments, totalTemplates, totalRevenue, totalPayments, revenueByCurrency]
       properties:
         totalUsers:
           type: integer
@@ -889,6 +889,22 @@ components:
           type: integer
         totalTemplates:
           type: integer
+        totalRevenue:
+          type: integer
+          description: Successful KES receipts in the currency's smallest unit.
+        totalPayments:
+          type: integer
+          description: Count of successful payments and wallet deposits.
+        revenueByCurrency:
+          type: array
+          items:
+            type: object
+            required: [currency, amount]
+            properties:
+              currency:
+                type: string
+              amount:
+                type: integer
 
     FetchAppJsonInput:
       type: object

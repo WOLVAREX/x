@@ -25,14 +25,50 @@ function formatTemplate(t: typeof templatesTable.$inferSelect) {
   };
 }
 
+async function getRevenueSummary() {
+  const [payments, walletTransactions] = await Promise.all([
+    db.select({ amount: paymentsTable.amount, currency: paymentsTable.currency, status: paymentsTable.status })
+      .from(paymentsTable),
+    db.select({ amount: walletTransactionsTable.amount, currency: walletTransactionsTable.currency, status: walletTransactionsTable.status, type: walletTransactionsTable.type })
+      .from(walletTransactionsTable),
+  ]);
+
+  const byCurrency = new Map<string, number>();
+  const addRevenue = (currency: string, amount: number) => {
+    const normalizedCurrency = currency.toUpperCase();
+    byCurrency.set(normalizedCurrency, (byCurrency.get(normalizedCurrency) ?? 0) + amount);
+  };
+  for (const payment of payments) {
+    if (payment.status === "success") addRevenue(payment.currency, payment.amount);
+  }
+  for (const transaction of walletTransactions) {
+    if (transaction.type === "deposit" && transaction.status === "success") addRevenue(transaction.currency, transaction.amount);
+  }
+
+  const revenueByCurrency = [...byCurrency.entries()]
+    .map(([currency, amount]) => ({ currency, amount }))
+    .sort((a, b) => a.currency.localeCompare(b.currency));
+  return {
+    // Amounts are stored in each currency's smallest unit. The overview card
+    // uses KES, while revenueByCurrency keeps currencies from being combined.
+    totalRevenue: byCurrency.get("KES") ?? 0,
+    revenueByCurrency,
+    totalPayments: payments.filter(payment => payment.status === "success").length
+      + walletTransactions.filter(transaction => transaction.type === "deposit" && transaction.status === "success").length,
+    totalTransactions: payments.length + walletTransactions.filter(transaction => transaction.type === "deposit").length,
+    pendingPayments: payments.filter(payment => payment.status === "pending").length
+      + walletTransactions.filter(transaction => transaction.type === "deposit" && transaction.status === "pending").length,
+  };
+}
+
 // ── Stats ─────────────────────────────────────────────────
 router.get("/admin/stats", requireAdmin, async (_req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
   const users = await db.select().from(usersTable);
   const deployments = await db.select().from(deploymentsTable);
   const templates = await db.select().from(templatesTable);
-  const payments = await db.select().from(paymentsTable).where(eq(paymentsTable.status, "success"));
+  const revenue = await getRevenueSummary();
   const onlineDeployments = deployments.filter(d => d.status === "online").length;
-  const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0);
   res.json({
     totalUsers: users.length,
     suspendedUsers: users.filter(u => u.suspended).length,
@@ -40,7 +76,7 @@ router.get("/admin/stats", requireAdmin, async (_req, res): Promise<void> => {
     onlineDeployments,
     errorDeployments: deployments.filter(d => d.status === "error").length,
     totalTemplates: templates.length,
-    totalRevenue, totalPayments: payments.length,
+    ...revenue,
   });
 });
 
@@ -54,7 +90,44 @@ router.get("/admin/users", requireAdmin, async (_req, res): Promise<void> => {
   })));
 });
 
-// ── Suspend user ──────────────────────────────────────────
+router.get("/admin/users/:id/details", requireAdmin, async (req, res): Promise<void> => {
+  const id = Number.parseInt(req.params.id as string, 10);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid user id" }); return; }
+
+  const [user] = await db.select({
+    id: usersTable.id, username: usersTable.username, email: usersTable.email,
+    role: usersTable.role, suspended: usersTable.suspended, country: usersTable.country,
+    coinBalance: usersTable.coinBalance, walletBalance: usersTable.walletBalance,
+    createdAt: usersTable.createdAt,
+  }).from(usersTable).where(eq(usersTable.id, id));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const [coinTotals, coinTransactions, walletTransactions, payments, deployments] = await Promise.all([
+    db.select({
+      credited: sql<number>`coalesce(sum(case when ${coinTransactionsTable.type} = 'credit' then ${coinTransactionsTable.amount} else 0 end), 0)::int`,
+      used: sql<number>`coalesce(sum(case when ${coinTransactionsTable.type} = 'debit' then ${coinTransactionsTable.amount} else 0 end), 0)::int`,
+    }).from(coinTransactionsTable).where(eq(coinTransactionsTable.userId, id)),
+    db.select().from(coinTransactionsTable).where(eq(coinTransactionsTable.userId, id)).orderBy(desc(coinTransactionsTable.createdAt)).limit(100),
+    db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, id)).orderBy(desc(walletTransactionsTable.createdAt)).limit(100),
+    db.select({ payment: paymentsTable, templateName: templatesTable.name })
+      .from(paymentsTable).leftJoin(templatesTable, eq(paymentsTable.templateId, templatesTable.id))
+      .where(eq(paymentsTable.userId, id)).orderBy(desc(paymentsTable.createdAt)).limit(100),
+    db.select({ deployment: deploymentsTable, templateName: templatesTable.name })
+      .from(deploymentsTable).leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
+      .where(eq(deploymentsTable.userId, id)).orderBy(desc(deploymentsTable.createdAt)).limit(100),
+  ]);
+
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    user,
+    coinSummary: { current: user.coinBalance, credited: coinTotals[0]?.credited ?? 0, used: coinTotals[0]?.used ?? 0 },
+    coinTransactions,
+    walletTransactions,
+    payments: payments.map(({ payment, templateName }) => ({ ...payment, templateName: templateName ?? "Unknown template" })),
+    deployments: deployments.map(({ deployment, templateName }) => ({ ...deployment, templateName: templateName ?? "Unknown template" })),
+  });
+});
+
 router.post("/admin/users/:id/coins", requireAdmin, async (req, res): Promise<void> => {
   const id = Number.parseInt(req.params.id as string, 10);
   const amount = req.body?.amount;
@@ -317,10 +390,12 @@ router.get("/admin/deployments/:id/logs", requireAdmin, async (req, res): Promis
 
 // ── Platform Health ───────────────────────────────────────
 router.get("/admin/health", requireAdmin, async (_req, res): Promise<void> => {
-  const deployments = await db.select().from(deploymentsTable);
-  const users = await db.select().from(usersTable);
-  const payments = await db.select().from(paymentsTable);
-  const walletTx = await db.select().from(walletTransactionsTable);
+  res.setHeader("Cache-Control", "no-store");
+  const [deployments, users, revenue] = await Promise.all([
+    db.select().from(deploymentsTable),
+    db.select().from(usersTable),
+    getRevenueSummary(),
+  ]);
 
   const onlineCount = deployments.filter(d => d.status === "online").length;
   const offlineCount = deployments.filter(d => d.status === "offline").length;
@@ -328,9 +403,7 @@ router.get("/admin/health", requireAdmin, async (_req, res): Promise<void> => {
   const buildingCount = deployments.filter(d => d.status === "building").length;
   const suspendedCount = deployments.filter(d => d.status === "suspended").length;
 
-  const totalRevenue = payments.filter(p => p.status === "success").reduce((s, p) => s + p.amount, 0);
-  const pendingPayments = payments.filter(p => p.status === "pending").length;
-  const totalWalletBalance = users.reduce((s, u) => s + (u.walletBalance ?? 0), 0);
+  const totalCoinBalance = users.reduce((s, u) => s + (u.coinBalance ?? 0), 0);
 
   // Uptime rate
   const uptimeRate = deployments.length > 0 ? Math.round((onlineCount / deployments.length) * 100) : 100;
@@ -348,7 +421,7 @@ router.get("/admin/health", requireAdmin, async (_req, res): Promise<void> => {
   res.json({
     bots: { total: deployments.length, online: onlineCount, offline: offlineCount, error: errorCount, building: buildingCount, suspended: suspendedCount, uptimeRate },
     users: { total: users.length, suspended: users.filter(u => u.suspended).length },
-    payments: { totalRevenue, pendingPayments, totalTransactions: payments.length, totalWalletBalance },
+    payments: { ...revenue, totalCoinBalance },
     integrations: { heroku: herokuStatus, database: "connected" },
     timestamp: new Date().toISOString(),
   });
