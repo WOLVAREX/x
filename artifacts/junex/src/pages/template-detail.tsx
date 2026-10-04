@@ -120,22 +120,28 @@ export default function TemplateDetail() {
     e.preventDefault();
     if (!validateForm() || !template) return;
     if (!plans.length) { toast({ title: "Hosting plans are unavailable", variant: "destructive" }); return; }
+    if (template.isFree) {
+      const defaultPlan = [...plans].sort((a, b) => a.days - b.days)[0];
+      void confirmDeploy(defaultPlan.id);
+      return;
+    }
     setSelectedPlanId(plans[0].id);
     setIsPlanDialogOpen(true);
   }
 
-  async function confirmDeploy() {
-    if (!template || !selectedPlan) return;
+  async function confirmDeploy(planId = selectedPlanId) {
+    const deployPlan = plans.find((plan) => plan.id === planId);
+    if (!template || !deployPlan) return;
     setIsDeploying(true);
     try {
-      const response = await fetch("/api/deployments", { method: "POST", headers: authHeader(), body: JSON.stringify({ templateId: template.id, botName: botName.trim(), envVars, planId: selectedPlan.id }) });
+      const response = await fetch("/api/deployments", { method: "POST", headers: authHeader(), body: JSON.stringify({ templateId: template.id, botName: botName.trim(), envVars, planId: deployPlan.id }) });
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 402) toast({ title: "Not enough coins", description: `This plan needs ${data.requiredCoins} coins. Your balance is ${data.balance}. Add coins in your wallet.`, variant: "destructive" });
         else toast({ title: "Deployment failed", description: data.error ?? "Please try again.", variant: "destructive" });
         return;
       }
-      toast({ title: "Deployment started!", description: `${selectedPlan.name} · ${selectedPlan.coins} coins` });
+      toast({ title: "Deployment started!", description: template.isFree ? `${deployPlan.name} hosting included at no charge` : `${deployPlan.name} · ${deployPlan.coins} coins` });
       setLocation(`/deployments/${data.id}`);
     } catch { toast({ title: "Could not start deployment", variant: "destructive" }); }
     finally { setIsDeploying(false); }
@@ -278,12 +284,12 @@ export default function TemplateDetail() {
             type="submit"
             className="w-full gap-2"
             size="lg"
-            disabled={isDeploying || isLoadingCoins || !plans.length}
+            disabled={isDeploying || (!template.isFree && isLoadingCoins) || !plans.length}
           >
             {isDeploying ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Deploying...</>
             ) : (
-              <><Zap className="h-4 w-4" /> Choose a hosting plan</>
+              <><Zap className="h-4 w-4" /> {template.isFree ? `Deploy free bot · ${Math.min(...plans.map((plan) => plan.days))} days` : "Choose a hosting plan"}</>
             )}
           </Button>
         </form>

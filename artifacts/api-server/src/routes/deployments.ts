@@ -4,7 +4,7 @@ import { eq, and, isNull, isNotNull, gte, lte, or, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { getSetting } from "../lib/settings";
-import { findPlan } from "../lib/plans";
+import { findPlan, getPlans } from "../lib/plans";
 import { getBotHealth } from "../lib/bot-health";
 
 const router: IRouter = Router();
@@ -384,7 +384,9 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
 
   const [template] = await db.select().from(templatesTable).where(eq(templatesTable.id, templateId));
   if (!template) { res.status(404).json({ error: "Template not found" }); return; }
-  const plan = await findPlan(planId);
+  const availablePlans = template.isFree ? await getPlans() : undefined;
+  const freePlan = availablePlans?.reduce((shortest, current) => current.days < shortest.days ? current : shortest);
+  const plan = template.isFree ? freePlan : await findPlan(planId);
   if (!plan) { res.status(400).json({ error: "Select a valid hosting plan" }); return; }
   if (user.suspended) { res.status(403).json({ error: "Your account has been suspended. Contact support." }); return; }
 
@@ -396,21 +398,29 @@ router.post("/deployments", requireAuth, async (req, res): Promise<void> => {
       .where(and(eq(deploymentsTable.userId, user.id), sql`lower(trim(${deploymentsTable.botName})) = ${normalizedBotName}`)).limit(1);
     if (existingName) return { duplicateName: true as const };
 
-    const [updatedUser] = await tx.update(usersTable)
-      .set({ coinBalance: sql`${usersTable.coinBalance} - ${plan.coins}` })
-      .where(and(eq(usersTable.id, user.id), gte(usersTable.coinBalance, plan.coins)))
-      .returning({ coinBalance: usersTable.coinBalance });
-    if (!updatedUser) return null;
+    if (!template.isFree) {
+      const [updatedUser] = await tx.update(usersTable)
+        .set({ coinBalance: sql`${usersTable.coinBalance} - ${plan.coins}` })
+        .where(and(eq(usersTable.id, user.id), gte(usersTable.coinBalance, plan.coins)))
+        .returning({ coinBalance: usersTable.coinBalance });
+      if (!updatedUser) return null;
+    }
     const [deployment] = await tx.insert(deploymentsTable).values({
       userId: user.id, templateId, botName, planId: plan.id, expiresAt,
       status: "building", envVars: envVars ?? {},
-      logs: [`${ts()} Deployment request received`, `${ts()} Template: ${template.name}`, `${ts()} Bot name: ${botName}`, `${ts()} Hosting plan: ${plan.name}`],
+      logs: [`${ts()} Deployment request received`, `${ts()} Template: ${template.name}`, `${ts()} Bot name: ${botName}`, `${ts()} Hosting plan: ${plan.name}${template.isFree ? " (free template; no coins charged)" : ""}`],
     }).returning();
-    await tx.insert(coinTransactionsTable).values({ userId: user.id, type: "debit", amount: plan.coins, reference: `DEPLOY-${deployment.id}`, description: `${plan.name} hosting plan for ${botName}` });
+    if (!template.isFree) {
+      await tx.insert(coinTransactionsTable).values({ userId: user.id, type: "debit", amount: plan.coins, reference: `DEPLOY-${deployment.id}`, description: `${plan.name} hosting plan for ${botName}` });
+    }
     return { deployment };
   });
   if (!result) {
-    res.status(402).json({ error: "Not enough coins for this plan", requiredCoins: plan.coins, balance: user.coinBalance });
+    if (template.isFree) {
+      res.status(409).json({ error: "Could not start this deployment. Please retry." });
+    } else {
+      res.status(402).json({ error: "Not enough coins for this plan", requiredCoins: plan.coins, balance: user.coinBalance });
+    }
     return;
   }
   if ("duplicateName" in result) {
@@ -727,7 +737,7 @@ router.get("/recovery/lookup", requireAuth, async (req, res): Promise<void> => {
     .from(deploymentsTable).where(and(eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)))]);
   res.json({
     id: row.deployment.id, appName: row.deployment.herokuAppId ?? sanitizeAppName(row.deployment.botName, row.deployment.id), botName: row.deployment.botName,
-    templateId: row.template.id, templateName: row.template.name, envVars: row.deployment.envVars,
+    templateId: row.template.id, templateName: row.template.name, isFree: row.template.isFree, envVars: row.deployment.envVars,
     fields, planId: row.deployment.planId, expiresAt: row.deployment.expiresAt,
     daysLeft: row.deployment.expiresAt ? Math.max(0, Math.ceil((row.deployment.expiresAt.getTime() - Date.now()) / 86_400_000)) : 0,
     sources: sources.map(({ envVars: _envVars, ...source }) => source),
@@ -762,11 +772,13 @@ router.post("/recovery", requireAuth, async (req, res): Promise<void> => {
   if (missing) { res.status(400).json({ error: `${missing[0]} is required` }); return; }
 
   const stillValid = row.deployment.expiresAt && row.deployment.expiresAt > new Date();
-  const plan = stillValid ? undefined : await findPlan(req.body?.planId);
+  const recoveryPlans = !stillValid && row.template.isFree ? await getPlans() : undefined;
+  const freeRecoveryPlan = recoveryPlans?.reduce((shortest, current) => current.days < shortest.days ? current : shortest);
+  const plan = stillValid ? undefined : row.template.isFree ? freeRecoveryPlan : await findPlan(req.body?.planId);
   if (!stillValid && !plan) { res.status(400).json({ error: "The old plan expired. Select a plan to recover this bot" }); return; }
   const expiresAt = stillValid ? row.deployment.expiresAt! : new Date(Date.now() + plan!.days * 86_400_000);
   const result = await db.transaction(async (tx) => {
-    if (!stillValid) {
+    if (!stillValid && !row.template.isFree) {
       const [account] = await tx.update(usersTable).set({ coinBalance: sql`${usersTable.coinBalance} - ${plan!.coins}` })
         .where(and(eq(usersTable.id, user.id), gte(usersTable.coinBalance, plan!.coins))).returning({ id: usersTable.id });
       if (!account) return null;
@@ -779,7 +791,11 @@ router.post("/recovery", requireAuth, async (req, res): Promise<void> => {
     }).where(and(eq(deploymentsTable.id, row.deployment.id), or(isNotNull(deploymentsTable.archivedAt), isNotNull(deploymentsTable.herokuDeletedAt)))).returning();
     return updated;
   });
-  if (!result) { res.status(402).json({ error: "Not enough coins to renew this bot", requiredCoins: plan?.coins, balance: user.coinBalance }); return; }
+  if (!result) {
+    if (row.template.isFree) { res.status(409).json({ error: "This bot is already being recovered" }); return; }
+    res.status(402).json({ error: "Not enough coins to renew this bot", requiredCoins: plan?.coins, balance: user.coinBalance });
+    return;
+  }
   res.status(202).json({ id: result.id, appName });
   void herokuDeploy(result.id, row.template, result.botName, envVars);
 });

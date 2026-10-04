@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 type Plan = { id: string; name: string; days: number; coins: number };
 type RecoveryInfo = {
   id: number; appName: string; botName: string; templateId: number; templateName: string;
+  isFree: boolean;
   envVars: Record<string, string>; fields: Record<string, { description?: string; required?: boolean }>;
   daysLeft: number; expiresAt: string | null; sources: Array<{ id: number; botName: string; templateName: string }>;
 };
@@ -42,7 +43,7 @@ export default function RecoverPage() {
         return;
       }
       setRecovery(data); setEnvVars(data.envVars ?? {});
-      if (data.daysLeft <= 0) {
+      if (data.daysLeft <= 0 && !data.isFree) {
         const plansResponse = await fetch(`${API_BASE}/api/plans`);
         const plansData = await plansResponse.json();
         setPlans(plansData.plans ?? []); setPlanId(plansData.plans?.[0]?.id ?? "");
@@ -72,7 +73,7 @@ export default function RecoverPage() {
     if (!recovery) return;
     setIsRecovering(true);
     try {
-      const response = await fetch(`${API_BASE}/api/recovery`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ appName: recovery.appName, envVars, sourceDeploymentId: sourceId || undefined, planId: recovery.daysLeft <= 0 ? planId : undefined }) });
+      const response = await fetch(`${API_BASE}/api/recovery`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ appName: recovery.appName, envVars, sourceDeploymentId: sourceId || undefined, planId: recovery.daysLeft <= 0 && !recovery.isFree ? planId : undefined }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not recover this bot");
       toast({ title: "Bot recovery started", description: `Rebuilding ${data.appName} with your saved app name.` });
@@ -108,9 +109,9 @@ export default function RecoverPage() {
             </div>
           </details>}
         </div> : <p className="text-sm text-muted-foreground">This template has no environment variables to configure.</p>}
-        {recovery.daysLeft <= 0 && <div className="space-y-1.5"><Label htmlFor="renew-plan">Select a plan to renew</Label><select id="renew-plan" value={planId} onChange={(event) => setPlanId(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} · {plan.days} days · {plan.coins} coins</option>)}</select></div>}
-        <Button className="w-full gap-2" disabled={isRecovering || (recovery.daysLeft <= 0 && !planId)} onClick={() => void recoverBot()}>{isRecovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}{isRecovering ? "Recovering bot…" : "Recover bot"}</Button>
-        <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /> Recovery recreates the deleted Heroku app with its original app name. Remaining days carry over; expired plans require a new plan.</p>
+        {recovery.daysLeft <= 0 && !recovery.isFree && <div className="space-y-1.5"><Label htmlFor="renew-plan">Select a plan to renew</Label><select id="renew-plan" value={planId} onChange={(event) => setPlanId(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} · {plan.days} days · {plan.coins} coins</option>)}</select></div>}
+        <Button className="w-full gap-2" disabled={isRecovering || (recovery.daysLeft <= 0 && !recovery.isFree && !planId)} onClick={() => void recoverBot()}>{isRecovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}{isRecovering ? "Recovering bot…" : "Recover bot"}</Button>
+        <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /> Recovery recreates the deleted Heroku app with its original app name. Remaining days carry over. {recovery.isFree ? "Expired free templates renew without a coin charge." : "Expired plans require a new hosting plan."}</p>
       </CardContent></Card>
     </div>}
   </div></Layout>;
