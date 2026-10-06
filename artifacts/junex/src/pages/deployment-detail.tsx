@@ -145,7 +145,8 @@ export default function DeploymentDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const lastRuntimeLogFetchRef = useRef(0);
+  const deploymentLogLinesRef = useRef<string[]>([]);
+  const runtimeLogLinesRef = useRef<string[]>([]);
 
   const [logs, setLogs] = useState<string[]>([]);
   const [deployStatus, setDeployStatus] = useState("building");
@@ -155,6 +156,7 @@ export default function DeploymentDetail() {
   const [newVal, setNewVal] = useState("");
   const [isSavingEnv, setIsSavingEnv] = useState(false);
   const [isRefreshingLogs, setIsRefreshingLogs] = useState(false);
+  const [isRuntimeStreamConnected, setIsRuntimeStreamConnected] = useState(false);
   const [herokuStatusError, setHerokuStatusError] = useState<string | null>(null);
   const [failureReason, setFailureReason] = useState<string | null>(null);
   const [herokuDeletedAt, setHerokuDeletedAt] = useState<string | null>(null);
@@ -184,7 +186,6 @@ export default function DeploymentDetail() {
 
     async function fetchLogs() {
       let liveStatus: string | undefined;
-      let liveStatusData: any;
       try {
         if (deployment?.herokuAppId) {
           try {
@@ -192,7 +193,6 @@ export default function DeploymentDetail() {
             const statusData = await statusRes.json();
             if (!statusRes.ok) throw new Error(statusData.error ?? "Could not read Heroku status");
             liveStatus = statusData.status;
-            liveStatusData = statusData;
             setFailureReason(statusData.failureReason ?? null);
             setHerokuDeletedAt(statusData.herokuDeletedAt ?? null);
             setHerokuStatusError(null);
@@ -207,26 +207,10 @@ export default function DeploymentDetail() {
         const status = liveStatus ?? data.status ?? "building";
         setDeployStatus(status);
         const lines: string[] = data.lines ?? [];
-
-        const terminalStatus = status === "online" || status === "failed";
-        const runtimeDynoAvailable = status === "building"
-          && liveStatusData?.dynos?.some((dyno: { state?: string }) => ["starting", "up", "crashed"].includes((dyno.state ?? "").toLowerCase()));
-        const shouldFetchRuntimeLogs = terminalStatus
-          || (runtimeDynoAvailable && Date.now() - lastRuntimeLogFetchRef.current >= 15_000);
-        if (shouldFetchRuntimeLogs && deployment?.herokuAppId && !herokuDeletedAt) {
-          lastRuntimeLogFetchRef.current = Date.now();
-          try {
-            const hRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
-            const hData = await hRes.json();
-            if (!hRes.ok) throw new Error(hData.error ?? "Could not fetch Heroku logs");
-            setLogs(hData.lines?.length ? [...lines, "", "-- Heroku runtime logs --", ...hData.lines] : lines);
-          } catch (error) {
-            setLogs(lines);
-            setHerokuStatusError(error instanceof Error ? error.message : "Could not fetch Heroku runtime logs");
-          }
-        } else {
-          setLogs(lines);
-        }
+        deploymentLogLinesRef.current = lines;
+        setLogs(runtimeLogLinesRef.current.length
+          ? [...lines, "", "-- Heroku runtime logs --", ...runtimeLogLinesRef.current]
+          : lines);
       } catch (error) {
         setHerokuStatusError(error instanceof Error ? error.message : "Could not refresh deployment logs");
       }
@@ -234,9 +218,91 @@ export default function DeploymentDetail() {
 
     fetchLogs();
     const isBuilding = deployStatus === "building";
-    const interval = setInterval(fetchLogs, isBuilding ? 3000 : 30000);
+    const interval = setInterval(fetchLogs, isBuilding ? 3000 : deployStatus === "online" ? 10000 : 30000);
     return () => clearInterval(interval);
   }, [id, deployStatus, deployment?.herokuAppId, herokuDeletedAt]);
+
+  // Keep an authenticated tail:true Heroku Logplex session open while a dyno
+  // is confirmed up. Reconnect if Heroku or the network closes the stream.
+  useEffect(() => {
+    if (!id || !deployment?.herokuAppId || deployStatus !== "online" || herokuDeletedAt) {
+      setIsRuntimeStreamConnected(false);
+      return;
+    }
+
+    let cancelled = false;
+    let controller: AbortController | undefined;
+    let retryTimer: number | undefined;
+
+    const appendRuntimeLines = (lines: string[]) => {
+      const tagged = lines.filter(Boolean).map((line) => `[Heroku runtime] ${line}`);
+      if (!tagged.length) return;
+      runtimeLogLinesRef.current.push(...tagged);
+      if (runtimeLogLinesRef.current.length > 1000) {
+        runtimeLogLinesRef.current.splice(0, runtimeLogLinesRef.current.length - 1000);
+      }
+      setLogs([
+        ...deploymentLogLinesRef.current,
+        "",
+        "-- Heroku runtime logs --",
+        ...runtimeLogLinesRef.current,
+      ]);
+    };
+
+    const connect = async () => {
+      while (!cancelled) {
+        controller = new AbortController();
+        try {
+          const response = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs/stream`, {
+            headers: authHeader(),
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error ?? `Runtime log stream failed (${response.status})`);
+          }
+          if (!response.body) throw new Error("Browser could not open the runtime log stream");
+
+          setIsRuntimeStreamConnected(true);
+          setHerokuStatusError(null);
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let pending = "";
+          try {
+            while (!cancelled) {
+              const { done, value } = await reader.read();
+              pending += decoder.decode(value, { stream: !done });
+              const parts = pending.split(/\r?\n/);
+              pending = parts.pop() ?? "";
+              appendRuntimeLines(parts);
+              if (done) {
+                if (pending) appendRuntimeLines([pending]);
+                break;
+              }
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        } catch (error) {
+          if (cancelled) break;
+          setHerokuStatusError(error instanceof Error ? error.message : "Heroku runtime log stream disconnected");
+        } finally {
+          setIsRuntimeStreamConnected(false);
+        }
+        if (!cancelled) await new Promise<void>((resolve) => {
+          retryTimer = window.setTimeout(resolve, 2000);
+        });
+      }
+    };
+
+    void connect();
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
+  }, [id, deployment?.herokuAppId, deployStatus, herokuDeletedAt]);
 
   // Auto scroll
   useEffect(() => {
@@ -271,15 +337,11 @@ export default function DeploymentDetail() {
       const deployRes = await fetch(`${API_BASE}/api/deployments/${id}/logs`, { headers: authHeader(), cache: "no-store" });
       const deployData = await deployRes.json();
       if (!deployRes.ok) throw new Error(deployData.error ?? "Could not read deployment events");
-      const terminalStatus = statusData.status === "online" || statusData.status === "failed";
-      const runtimeDynoAvailable = statusData.status === "building"
-        && statusData.dynos?.some((dyno: { state?: string }) => ["starting", "up", "crashed"].includes((dyno.state ?? "").toLowerCase()));
-      if ((terminalStatus || runtimeDynoAvailable) && !statusData.herokuDeletedAt) {
-        const herokuRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
-        const herokuData = await herokuRes.json();
-        if (!herokuRes.ok) throw new Error(herokuData.error ?? "Could not read Heroku runtime logs");
-        setLogs(herokuData.lines?.length ? [...(deployData.lines ?? []), "", "-- Heroku runtime logs --", ...herokuData.lines] : deployData.lines ?? []);
-      } else setLogs(deployData.lines ?? []);
+      const lines: string[] = deployData.lines ?? [];
+      deploymentLogLinesRef.current = lines;
+      setLogs(runtimeLogLinesRef.current.length
+        ? [...lines, "", "-- Heroku runtime logs --", ...runtimeLogLinesRef.current]
+        : lines);
       setHerokuStatusError(null);
       toast({ title: "Heroku status and logs refreshed" });
     } catch (error) { toast({ title: "Could not refresh Heroku data", description: error instanceof Error ? error.message : "Try again shortly.", variant: "destructive" }); }
@@ -420,6 +482,12 @@ export default function DeploymentDetail() {
             </TabsList>
 
             <div className="flex gap-2">
+              {deployment.herokuAppId && deployStatus === "online" && (
+                <span className="inline-flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
+                  <span className={`h-1.5 w-1.5 rounded-full ${isRuntimeStreamConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+                  {isRuntimeStreamConnected ? "Live bot logs" : "Connecting logs"}
+                </span>
+              )}
               {!isBuilding && <>
                 {deployStatus === "offline" || deployStatus === "error" || deployStatus === "failed" || deployStatus === "suspended" ? (
                   <Button size="sm" variant="outline" className="gap-1.5 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30"

@@ -7,7 +7,7 @@ import { getSetting } from "../lib/settings";
 import { findPlan, getPlans } from "../lib/plans";
 import { getBotHealth } from "../lib/bot-health";
 import { appendDeploymentLog as appendLog, appendDeploymentLogs as appendLogs } from "../lib/deployment-logs";
-import { fetchHerokuRuntimeLogs } from "../lib/heroku-runtime-logs";
+import { fetchHerokuRuntimeLogs, openHerokuRuntimeLogStream } from "../lib/heroku-runtime-logs";
 
 const router: IRouter = Router();
 
@@ -1017,6 +1017,66 @@ router.patch("/deployments/:id/env", requireAuth, async (req, res): Promise<void
 
 
 // ── Live logs from Heroku ─────────────────────────────────
+router.get("/deployments/:id/heroku-logs/stream", requireAuth, async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store, no-transform");
+  const user = (req as any).user;
+  const id = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [deployment] = await db
+    .select()
+    .from(deploymentsTable)
+    .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
+  if (!deployment) { res.status(404).json({ error: "Not found" }); return; }
+  if (!deployment.herokuAppId) { res.status(400).json({ error: "Bot not yet deployed to Heroku" }); return; }
+  if (!await getHerokuKey()) { res.status(500).json({ error: "Heroku not configured" }); return; }
+
+  const controller = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) controller.abort();
+  });
+
+  try {
+    const upstream = await openHerokuRuntimeLogStream(deployment.herokuAppId, await herokuHeaders(), controller.signal);
+    if (!upstream.body) throw new Error("Heroku returned an empty runtime log stream");
+    res.status(200);
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("X-Log-Source", "Heroku Logplex");
+    const reader = upstream.body.getReader();
+    try {
+      while (!controller.signal.aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!res.write(value)) {
+          await new Promise<void>((resolve) => {
+            const finish = () => {
+              res.off("drain", finish);
+              res.off("close", finish);
+              resolve();
+            };
+            res.once("drain", finish);
+            res.once("close", finish);
+            if (controller.signal.aborted) finish();
+          });
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    if (!res.writableEnded) res.end();
+  } catch (err) {
+    if (controller.signal.aborted) return;
+    logger.warn({ err, deploymentId: id }, "Heroku runtime log stream ended with an error");
+    if (!res.headersSent) {
+      const message = err instanceof Error ? err.message : "Could not open Heroku runtime log stream";
+      res.status(502).json({ error: message });
+    } else if (!res.writableEnded) {
+      res.end();
+    }
+  }
+});
+
 router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "no-store");
   const user = (req as any).user;
