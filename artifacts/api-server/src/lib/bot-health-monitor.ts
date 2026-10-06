@@ -3,6 +3,7 @@ import { db, deploymentsTable } from "@workspace/db";
 import { logger } from "./logger";
 import { getSetting } from "./settings";
 import { getBotHealth } from "./bot-health";
+import { appendDeploymentLog } from "./deployment-logs";
 
 const HEROKU_BASE = "https://api.heroku.com";
 const FAILED_RETENTION_MS = 10 * 60_000;
@@ -32,18 +33,20 @@ async function checkBots() {
         const failedAt = failed ? deployment.failedAt ?? now : null;
         const failureReason = failed ? health.failureReason : null;
         const changed = health.status !== deployment.status || failureReason !== deployment.failureReason;
-        const logs = (deployment.logs as string[]) ?? [];
-        const nextLogs = changed
-          ? [...logs, `[${now.toISOString()}] ${failed ? `Bot failed: ${failureReason ?? "Unknown failure"}` : `Bot status changed to ${health.status}`}`]
-          : logs;
+        const statusEvent = health.status === "online"
+          ? "Heroku dyno is up; WhatsApp session status is not verified by J.H.P."
+          : failed
+            ? `Heroku reports failure: ${failureReason ?? "Unknown failure"}`
+            : `Heroku dyno status changed to ${health.status}`;
 
         if (health.herokuAppMissing) {
           await db.update(deploymentsTable).set({
             status: "failed", failedAt: failedAt ?? now,
             failureReason: failureReason ?? "The Heroku app no longer exists",
             herokuDeletedAt: now,
-            logs: [...nextLogs, `[${now.toISOString()}] Heroku app was already removed; recover this bot to redeploy it`],
           }).where(eq(deploymentsTable.id, deployment.id));
+          if (changed) await appendDeploymentLog(deployment.id, statusEvent);
+          await appendDeploymentLog(deployment.id, "Heroku app was already removed; recover this bot to redeploy it");
           return;
         }
 
@@ -55,14 +58,16 @@ async function checkBots() {
           });
           if (!response.ok && response.status !== 404) {
             logger.warn({ deploymentId: deployment.id, status: response.status }, "Could not delete a bot that has remained failed for ten minutes");
-            await db.update(deploymentsTable).set({ status: "failed", failedAt, failureReason, logs: nextLogs })
+            await db.update(deploymentsTable).set({ status: "failed", failedAt, failureReason })
               .where(eq(deploymentsTable.id, deployment.id));
+            if (changed) await appendDeploymentLog(deployment.id, statusEvent);
             return;
           }
           await db.update(deploymentsTable).set({
             status: "failed", failedAt, failureReason, herokuDeletedAt: now,
-            logs: [...nextLogs, `[${now.toISOString()}] Bot remained failed for ten minutes; Heroku app deleted. Recover this bot to redeploy it.`],
           }).where(eq(deploymentsTable.id, deployment.id));
+          if (changed) await appendDeploymentLog(deployment.id, statusEvent);
+          await appendDeploymentLog(deployment.id, "Heroku app remained failed for ten minutes and was deleted. Recover this bot to redeploy it.");
           logger.info({ deploymentId: deployment.id }, "Deleted a bot after ten minutes in failed state");
           return;
         }
@@ -72,8 +77,8 @@ async function checkBots() {
             status: health.status,
             failedAt,
             failureReason,
-            ...(changed ? { logs: nextLogs } : {}),
           }).where(eq(deploymentsTable.id, deployment.id));
+          if (changed) await appendDeploymentLog(deployment.id, statusEvent);
         }
       } catch (err) {
         logger.warn({ err, deploymentId: deployment.id }, "Bot health check failed");

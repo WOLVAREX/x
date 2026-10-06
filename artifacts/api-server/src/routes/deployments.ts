@@ -6,6 +6,8 @@ import { logger } from "../lib/logger";
 import { getSetting } from "../lib/settings";
 import { findPlan, getPlans } from "../lib/plans";
 import { getBotHealth } from "../lib/bot-health";
+import { appendDeploymentLog as appendLog, appendDeploymentLogs as appendLogs } from "../lib/deployment-logs";
+import { fetchHerokuRuntimeLogs } from "../lib/heroku-runtime-logs";
 
 const router: IRouter = Router();
 
@@ -129,16 +131,7 @@ function formatDeployment(d: typeof deploymentsTable.$inferSelect, templateName:
   };
 }
 
-async function appendLog(deploymentId: number, line: string) {
-  const [dep] = await db.select().from(deploymentsTable).where(eq(deploymentsTable.id, deploymentId));
-  if (!dep) return;
-  const existing = (dep.logs as string[]) ?? [];
-  await db.update(deploymentsTable)
-    .set({ logs: [...existing, `${ts()} ${line}`] })
-    .where(eq(deploymentsTable.id, deploymentId));
-}
-
-async function appendHerokuBuildOutput(deploymentId: number, outputStreamUrl: unknown): Promise<void> {
+async function streamHerokuBuildOutput(deploymentId: number, outputStreamUrl: unknown, signal: AbortSignal): Promise<void> {
   if (typeof outputStreamUrl !== "string") {
     await appendLog(deploymentId, "Heroku did not provide a build output stream URL");
     return;
@@ -157,11 +150,12 @@ async function appendHerokuBuildOutput(deploymentId: number, outputStreamUrl: un
   }
 
   try {
-    const response = await fetch(streamUrl, { signal: AbortSignal.timeout(20_000) });
+    const response = await fetch(streamUrl, { signal: AbortSignal.any([signal, AbortSignal.timeout(330_000)]) });
     if (!response.ok) {
       await appendLog(deploymentId, `Could not retrieve Heroku build output (${response.status})`);
       return;
     }
+    const eventStream = response.headers.get("content-type")?.includes("text/event-stream") ?? false;
 
     const reader = response.body?.getReader();
     if (!reader) {
@@ -169,46 +163,77 @@ async function appendHerokuBuildOutput(deploymentId: number, outputStreamUrl: un
       return;
     }
 
-    const chunks: Uint8Array[] = [];
     let byteLength = 0;
-    const maxBytes = 128 * 1024;
+    const maxBytes = 1024 * 1024;
+    let pending = "";
+    let batch: string[] = [];
+    const decoder = new TextDecoder();
+    const flush = async () => {
+      if (batch.length === 0) return;
+      const lines = batch;
+      batch = [];
+      await appendLogs(deploymentId, lines);
+    };
+    const consume = async (text: string, final = false) => {
+      const parts = `${pending}${text}`.split(/\r?\n/);
+      pending = final ? "" : parts.pop() ?? "";
+      for (const part of parts) {
+        let line = part.replace(/\u0000/g, "");
+        if (eventStream && /^(?:event|id|retry):/.test(line)) continue;
+        if (eventStream && line.startsWith("data:")) line = line.slice(5).replace(/^ /, "");
+        if (line.trim()) batch.push(`[Heroku build] ${line.slice(0, 2_000)}`);
+      }
+      await flush();
+    };
+
+    await appendLog(deploymentId, "Heroku build output stream connected");
     while (byteLength < maxBytes) {
       const { done, value } = await reader.read();
       if (done) break;
       const remaining = maxBytes - byteLength;
       const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
-      chunks.push(chunk);
       byteLength += chunk.byteLength;
+      await consume(decoder.decode(chunk, { stream: true }));
       if (chunk.byteLength < value.byteLength) {
         await reader.cancel();
         break;
       }
     }
     if (byteLength >= maxBytes) await reader.cancel();
-
-    const bytes = new Uint8Array(byteLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    const output = new TextDecoder().decode(bytes)
-      .replace(/\u0000/g, "")
-      .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
-      .trim();
-    if (!output) {
-      await appendLog(deploymentId, "Heroku build output was empty");
-      return;
-    }
-
-    const lines = output.split(/\r?\n/).filter(Boolean);
-    const selected = lines.slice(-60);
-    await appendLog(deploymentId, `Heroku build output (last ${selected.length} lines${byteLength >= maxBytes ? ", capped at 128 KB" : ""}):`);
-    for (const line of selected) await appendLog(deploymentId, line.slice(0, 2_000));
+    await consume(decoder.decode(), true);
+    if (byteLength === 0) await appendLog(deploymentId, "Heroku build output stream was empty");
+    if (byteLength >= maxBytes) await appendLog(deploymentId, "Heroku build output truncated at 1 MB");
   } catch (error) {
+    if (signal.aborted) return;
     const reason = error instanceof Error && error.name === "TimeoutError" ? "timed out" : "could not be read";
     await appendLog(deploymentId, `Heroku build output ${reason}`);
   }
+}
+
+async function waitForHerokuDynoUp(appName: string, type: string, deploymentId: number): Promise<boolean> {
+  let lastState = "";
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const response = await fetch(`${HEROKU_BASE}/apps/${appName}/dynos`, {
+      headers: await herokuHeaders(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      await appendLog(deploymentId, `Could not confirm Heroku ${type} dyno state (${response.status})`);
+      return false;
+    }
+    const dynos = await response.json() as Array<{ name?: string; type?: string; state?: string }>;
+    const matching = dynos.filter((dyno) => dyno.type === type);
+    const state = matching.length
+      ? matching.map((dyno) => `${dyno.name ?? type}:${(dyno.state ?? "unknown").toLowerCase()}`).join(", ")
+      : "no dyno reported";
+    if (state !== lastState) {
+      await appendLog(deploymentId, `Heroku ${type} dyno state: ${state}`);
+      lastState = state;
+    }
+    if (matching.some((dyno) => (dyno.state ?? "").toLowerCase() === "up")) return true;
+    if (attempt < 11) await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+  return false;
 }
 
 async function herokuDeploy(deploymentId: number, template: typeof templatesTable.$inferSelect, botName: string, envVars: Record<string, string>) {
@@ -365,6 +390,12 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     const buildId = buildData.id as string;
     await appendLog(deploymentId, `Build started (ID: ${buildId})`);
     await appendLog(deploymentId, "Compiling dependencies...");
+    const buildOutputController = new AbortController();
+    const buildOutputPromise = streamHerokuBuildOutput(
+      deploymentId,
+      buildData.output_stream_url,
+      buildOutputController.signal,
+    );
 
     // ── Step 5: Poll build status ────────────────────────────
     let buildStatus = "pending";
@@ -377,7 +408,11 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
 
       const [current] = await db.select({ status: deploymentsTable.status, archivedAt: deploymentsTable.archivedAt })
         .from(deploymentsTable).where(eq(deploymentsTable.id, deploymentId));
-      if (!current || current.archivedAt || current.status === "online") return;
+      if (!current || current.archivedAt || current.status === "online") {
+        buildOutputController.abort();
+        await buildOutputPromise;
+        return;
+      }
 
       const statusRes = await fetch(`${HEROKU_BASE}/apps/${appName}/builds/${buildId}`, {
         headers: await herokuHeaders(),
@@ -396,8 +431,10 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       }
     }
 
-    if (buildStatus !== "succeeded") {
-      await appendHerokuBuildOutput(deploymentId, buildData.output_stream_url);
+    if (["pending", "queued", "processing"].includes(buildStatus)) buildOutputController.abort();
+    await buildOutputPromise;
+
+    if (!["succeeded", "successful"].includes(buildStatus)) {
       await appendLog(deploymentId, `ERROR: Build ${buildStatus} after ${attempts * 5}s`);
       await db.update(deploymentsTable).set({ status: "error" }).where(eq(deploymentsTable.id, deploymentId));
       return;
@@ -414,27 +451,42 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: "eco" }] }),
     });
 
+    let dynoType: string | null = null;
     if (!scaleRes.ok) {
       // Try web dyno as fallback
+      await appendLog(deploymentId, `Heroku rejected the worker dyno request (${scaleRes.status}); trying web`);
       const scaleRes2 = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
         method: "PATCH",
         headers: await herokuHeaders(),
         body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: "eco" }] }),
       });
       if (!scaleRes2.ok) {
-        await appendLog(deploymentId, "WARNING: Could not scale dyno automatically. Start manually from dashboard.");
+        const errorBody = await scaleRes2.json().catch(() => ({})) as { message?: string };
+        await appendLog(deploymentId, `ERROR: Heroku rejected both worker and web dyno scale requests: ${errorBody.message ?? scaleRes2.statusText}`);
+        await db.update(deploymentsTable).set({ status: "offline", failureReason: null })
+          .where(eq(deploymentsTable.id, deploymentId));
+        return;
       } else {
-        await appendLog(deploymentId, "Web dyno started (1x eco)");
+        await appendLog(deploymentId, "Heroku accepted the web dyno scale request (1x eco)");
+        dynoType = "web";
       }
     } else {
-      await appendLog(deploymentId, "Worker dyno started (1x eco)");
+      await appendLog(deploymentId, "Heroku accepted the worker dyno scale request (1x eco)");
+      dynoType = "worker";
+    }
+
+    const dynoIsUp = dynoType ? await waitForHerokuDynoUp(appName, dynoType, deploymentId) : false;
+    if (!dynoIsUp) {
+      await appendLog(deploymentId, "Heroku accepted the scale request but has not confirmed a running dyno yet; status remains building.");
+      await db.update(deploymentsTable).set({ status: "building", failureReason: null })
+        .where(eq(deploymentsTable.id, deploymentId));
+      return;
     }
 
     // ── Step 7: Mark as online ───────────────────────────────
     await appendLog(deploymentId, "");
-    await appendLog(deploymentId, "Deployment successful!");
-    await appendLog(deploymentId, `Your bot is live at: https://${appName}.herokuapp.com`);
-    await appendLog(deploymentId, "Redirecting to your bots...");
+    await appendLog(deploymentId, "Heroku confirmed the dyno is up. WhatsApp session connectivity is not verified by J.H.P.");
+    await appendLog(deploymentId, `Heroku app: https://${appName}.herokuapp.com`);
 
     await db.update(deploymentsTable)
       .set({ status: "online", herokuAppId: appName })
@@ -610,13 +662,19 @@ router.get("/deployments/:id/heroku-status", requireAuth, async (req, res): Prom
     const failedAt = health.status === "failed" ? deployment.failedAt ?? now : null;
     const failureReason = health.status === "failed" ? health.failureReason : null;
     const changed = health.status !== deployment.status || failureReason !== deployment.failureReason;
-    const logs = (deployment.logs as string[]) ?? [];
     if (changed || health.herokuAppMissing || failedAt?.getTime() !== deployment.failedAt?.getTime()) {
       await db.update(deploymentsTable).set({
         status: health.status, failedAt, failureReason,
         ...(health.herokuAppMissing ? { herokuDeletedAt: now } : {}),
-        ...(changed ? { logs: [...logs, `${ts()} ${health.status === "failed" ? `Bot failed: ${failureReason}` : `Bot status changed to ${health.status}`}`] } : {}),
       }).where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
+      if (changed) {
+        const statusEvent = health.status === "online"
+          ? "Heroku dyno is up; WhatsApp session status is not verified by J.H.P."
+          : health.status === "failed"
+            ? `Heroku reports failure: ${failureReason ?? "Unknown failure"}`
+            : `Heroku dyno status changed to ${health.status}`;
+        await appendLog(id, statusEvent);
+      }
     }
     res.json({ ...health, failedAt, failureReason, herokuDeletedAt: health.herokuAppMissing ? now : deployment.herokuDeletedAt, checkedAt: now.toISOString() });
   } catch (err) {
@@ -643,18 +701,34 @@ router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<voi
   if (row.deployment.expiresAt && row.deployment.expiresAt <= new Date()) { res.status(402).json({ error: "Hosting plan expired. Choose a new plan from the recovery page.", recover: true }); return; }
 
   const appName = row.deployment.herokuAppId;
-  if (appName && await getHerokuKey()) {
-    await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
+  if (!appName) { res.status(409).json({ error: "Heroku app is not available yet" }); return; }
+  if (!await getHerokuKey()) { res.status(503).json({ error: "Heroku is not configured" }); return; }
+  let dynoType = "worker";
+  let scaleResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
       method: "PATCH",
       headers: await herokuHeaders(),
       body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: "eco" }] }),
     });
+  if (!scaleResponse.ok) {
+    await appendLog(id, `Heroku rejected the worker start request (${scaleResponse.status}); trying web`);
+    dynoType = "web";
+    scaleResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
+      method: "PATCH",
+      headers: await herokuHeaders(),
+      body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: "eco" }] }),
+    });
+  }
+  if (!scaleResponse.ok) {
+    const errorBody = await scaleResponse.json().catch(() => ({})) as { message?: string };
+    await appendLog(id, `Heroku rejected both worker and web start requests (${scaleResponse.status}): ${errorBody.message ?? scaleResponse.statusText}`);
+    res.status(502).json({ error: errorBody.message ?? "Heroku rejected the dyno start request" });
+    return;
   }
 
-  const logs = (row.deployment.logs as string[]) ?? [];
   const [updated] = await db.update(deploymentsTable)
-    .set({ status: "building", failedAt: null, failureReason: null, logs: [...logs, `${ts()} Bot start requested`] })
+    .set({ status: "building", failedAt: null, failureReason: null })
     .where(eq(deploymentsTable.id, id)).returning();
+  await appendLog(id, `Heroku accepted the ${dynoType} start request; waiting for dyno status confirmation`);
 
   res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
 });
@@ -672,14 +746,15 @@ router.post("/deployments/:id/stop", requireAuth, async (req, res): Promise<void
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
   const appName = row.deployment.herokuAppId;
-  if (appName && await getHerokuKey()) {
+  if (appName && !await getHerokuKey()) { res.status(503).json({ error: "Heroku is not configured" }); return; }
+  if (appName) {
     await stopHerokuDynos(appName);
   }
 
-  const logs = (row.deployment.logs as string[]) ?? [];
   const [updated] = await db.update(deploymentsTable)
-    .set({ status: "offline", failedAt: null, failureReason: null, logs: [...logs, `${ts()} Bot stopped`] })
+    .set({ status: "offline", failedAt: null, failureReason: null })
     .where(eq(deploymentsTable.id, id)).returning();
+  await appendLog(id, appName ? "Heroku dynos scaled to zero" : "No Heroku app was attached; deployment marked offline in J.H.P");
 
   res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
 });
@@ -701,17 +776,23 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
   if (row.deployment.expiresAt && row.deployment.expiresAt <= new Date()) { res.status(402).json({ error: "Hosting plan expired. Choose a new plan from the recovery page.", recover: true }); return; }
 
   const appName = row.deployment.herokuAppId;
-  if (appName && await getHerokuKey()) {
-    await fetch(`${HEROKU_BASE}/apps/${appName}/dynos`, {
+  if (!appName) { res.status(409).json({ error: "Heroku app is not available yet" }); return; }
+  if (!await getHerokuKey()) { res.status(503).json({ error: "Heroku is not configured" }); return; }
+  const restartResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/dynos`, {
       method: "DELETE",
       headers: await herokuHeaders(),
     });
+  if (!restartResponse.ok) {
+    const errorBody = await restartResponse.json().catch(() => ({})) as { message?: string };
+    await appendLog(id, `Heroku rejected the dyno restart request (${restartResponse.status}): ${errorBody.message ?? restartResponse.statusText}`);
+    res.status(502).json({ error: errorBody.message ?? "Heroku rejected the dyno restart request" });
+    return;
   }
 
-  const logs = (row.deployment.logs as string[]) ?? [];
   const [updated] = await db.update(deploymentsTable)
-    .set({ status: "building", failedAt: null, failureReason: null, logs: [...logs, `${ts()} Bot restart requested`] })
+    .set({ status: "building", failedAt: null, failureReason: null })
     .where(eq(deploymentsTable.id, id)).returning();
+  await appendLog(id, "Heroku accepted the dyno restart request; waiting for dyno status confirmation");
 
   res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
 });
@@ -744,8 +825,8 @@ router.delete("/deployments/:id", requireAuth, async (req, res): Promise<void> =
     }
   }
 
-  const logs = (row.logs as string[]) ?? [];
-  await db.update(deploymentsTable).set({ status: "archived", archivedAt: new Date(), logs: [...logs, `${ts()} Archived for recovery; Heroku app removed`] }).where(eq(deploymentsTable.id, id));
+  await db.update(deploymentsTable).set({ status: "archived", archivedAt: new Date() }).where(eq(deploymentsTable.id, id));
+  await appendLog(id, "Archived for recovery; Heroku app removed");
   res.json({ success: true, appName: row.herokuAppId, recoverable: true });
 });
 
@@ -926,10 +1007,10 @@ router.patch("/deployments/:id/env", requireAuth, async (req, res): Promise<void
     }).catch(() => {});
   }
 
-  const logs = (row.deployment.logs as string[]) ?? [];
   const [updated] = await db.update(deploymentsTable)
-    .set({ envVars: editableEnvVars, logs: [...logs, `${ts()} Environment variables updated`] })
+    .set({ envVars: editableEnvVars })
     .where(eq(deploymentsTable.id, id)).returning();
+  await appendLog(id, "Environment variables updated on J.H.P");
 
   res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
 });
@@ -953,25 +1034,17 @@ router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promis
   if (!await getHerokuKey()) { res.status(500).json({ error: "Heroku not configured" }); return; }
 
   try {
-    // Get a log session from Heroku
-    const sessionRes = await fetch(`${HEROKU_BASE}/apps/${deployment.herokuAppId}/log-sessions`, {
-      method: "POST",
-      headers: await herokuHeaders(),
-      body: JSON.stringify({ lines: 100, tail: false }),
-      signal: AbortSignal.timeout(10_000),
+    const lines = await fetchHerokuRuntimeLogs(deployment.herokuAppId, await herokuHeaders());
+    res.json({
+      lines: lines.map((line) => `[Heroku runtime] ${line}`),
+      herokuAppId: deployment.herokuAppId,
+      fetchedAt: new Date().toISOString(),
+      source: "Heroku Logplex",
     });
-    const sessionData = await sessionRes.json() as any;
-    if (!sessionRes.ok) { res.status(400).json({ error: sessionData.message ?? "Could not fetch logs" }); return; }
-
-    // Fetch the actual log content
-    const logsRes = await fetch(sessionData.logplex_url, { signal: AbortSignal.timeout(10_000) });
-    const logsText = await logsRes.text();
-    const lines = logsText.split("\n").filter(Boolean);
-
-    res.json({ lines, herokuAppId: deployment.herokuAppId });
   } catch (err) {
     logger.error({ err }, "Heroku logs error");
-    res.status(500).json({ error: "Failed to fetch Heroku logs" });
+    const message = err instanceof Error ? err.message : "Failed to fetch Heroku logs";
+    res.status(502).json({ error: message });
   }
 });
 

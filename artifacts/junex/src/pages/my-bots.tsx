@@ -39,7 +39,7 @@ function StatusBadge({ status }: { status: string }) {
   const { cls, icon } = cfg[status] ?? cfg.offline;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>
-      {icon} {status}
+      {icon} {status === "online" ? "Dyno up" : status}
     </span>
   );
 }
@@ -81,7 +81,7 @@ export default function MyBotsPage() {
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">My Bots</h1>
             <p className="text-muted-foreground mt-1 text-sm">
               {deployments?.length ?? 0} bot{(deployments?.length ?? 0) !== 1 ? "s" : ""} deployed
-              {onlineCount > 0 && ` — ${onlineCount} online`}
+              {onlineCount > 0 && ` — ${onlineCount} Heroku dynos up`}
             </p>
           </div>
           <Button className="gap-2" asChild>
@@ -167,7 +167,7 @@ export default function MyBotsPage() {
                   {dep.herokuDeletedAt && (
                     <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
                       <p className="font-semibold">Bot needs recovery</p>
-                      <p className="mt-1 text-amber-100/80">{dep.failureReason ?? "The bot session failed"}. Its Heroku app was removed to stop resource usage. Recover it to redeploy.</p>
+                      <p className="mt-1 text-amber-100/80">{dep.failureReason ?? "Heroku reported a runtime failure"}. Its Heroku app was removed. Recover it to redeploy.</p>
                       <Button asChild size="sm" variant="outline" className="mt-2 h-8 border-amber-500/40 text-amber-100 hover:bg-amber-500/15">
                         <Link href={`/recover?appName=${encodeURIComponent(dep.herokuAppId ?? dep.botName)}`}>Recover bot</Link>
                       </Button>
@@ -175,8 +175,8 @@ export default function MyBotsPage() {
                   )}
                   {dep.status === "failed" && !dep.herokuDeletedAt && (
                     <div role="status" className="rounded-lg border border-red-500/25 bg-red-500/5 p-3 text-xs text-red-200">
-                      <p className="font-semibold">Bot session failed</p>
-                      <p className="mt-1 text-red-200/80">{dep.failureReason ?? "The bot is not healthy"}. J.H.P will remove its Heroku app if it stays failed for ten minutes.</p>
+                      <p className="font-semibold">Heroku reports failure</p>
+                      <p className="mt-1 text-red-200/80">{dep.failureReason ?? "Heroku reports that the configured dyno is not running."} J.H.P may remove the Heroku app if the failure persists for ten minutes.</p>
                     </div>
                   )}
 

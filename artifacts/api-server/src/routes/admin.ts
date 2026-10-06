@@ -4,6 +4,7 @@ import { and, eq, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { getSetting, setSetting } from "../lib/settings";
+import { fetchHerokuRuntimeLogs } from "../lib/heroku-runtime-logs";
 
 const router: IRouter = Router();
 const HEROKU_BASE = "https://api.heroku.com";
@@ -369,20 +370,13 @@ router.get("/admin/deployments/:id/logs", requireAdmin, async (req, res): Promis
   let lines = (dep.logs as string[]) ?? [];
 
   // Fetch live Heroku logs too
-  if (dep.herokuAppId && await getSetting("HEROKU_API_KEY")) {
+  if (dep.herokuAppId && ((await getSetting("HEROKU_TEAM_API_KEY")) || (await getSetting("HEROKU_API_KEY")))) {
     try {
-      const sessionRes = await fetch(`${HEROKU_BASE}/apps/${dep.herokuAppId}/log-sessions`, {
-        method: "POST", headers: await herokuHeaders(),
-        body: JSON.stringify({ lines: 100, tail: false }),
-      });
-      if (sessionRes.ok) {
-        const sessionData = await sessionRes.json() as any;
-        const logsRes = await fetch(sessionData.logplex_url);
-        const logsText = await logsRes.text();
-        const herokuLines = logsText.split("\n").filter(Boolean);
-        lines = [...lines, "", "-- Live Heroku Logs --", ...herokuLines];
-      }
-    } catch {}
+      const herokuLines = await fetchHerokuRuntimeLogs(dep.herokuAppId, await herokuHeaders());
+      lines = [...lines, "", "-- Heroku runtime logs --", ...herokuLines.map((line) => `[Heroku runtime] ${line}`)];
+    } catch (error) {
+      logger.warn({ err: error, deploymentId: id }, "Could not fetch Heroku runtime logs for admin view");
+    }
   }
 
   res.json({ lines, status: dep.status, botName: dep.botName, herokuAppId: dep.herokuAppId });

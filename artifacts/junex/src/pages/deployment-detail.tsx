@@ -51,7 +51,7 @@ function StatusBadge({ status }: { status: string }) {
       {status === "building" ? <Loader2 className="h-3 w-3 animate-spin" /> :
        status === "online" ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> :
        <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />}
-      {status}
+      {status === "online" ? "Dyno up" : status}
     </span>
   );
 }
@@ -120,12 +120,16 @@ function ansiSegments(input: string): Array<{ text: string; style: CSSProperties
 function LogLine({ line }: { line: string }) {
   if (!line || line.trim() === "") return <div className="h-1.5" />;
   const divider = line.match(/^--\s*(.*?)\s*--$/);
-  if (divider) return <div className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-slate-800" />{divider[1].replace(/Heroku Runtime/i, "Bot Output").replace(/Live Heroku Logs/i, "Bot Output")}<span className="h-px flex-1 bg-slate-800" /></div>;
-  const segments = ansiSegments(line);
+  if (divider) return <div className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-slate-800" />{divider[1]}<span className="h-px flex-1 bg-slate-800" /></div>;
+  const buildLog = /^\[(?:[^\]]+)\]\s+\[Heroku build\]\s/.test(line) || /^\[Heroku build\]\s/.test(line);
+  const runtimeLog = /^\[(?:[^\]]+)\]\s+\[Heroku runtime\]\s/.test(line) || /^\[Heroku runtime\]\s/.test(line);
+  const source = buildLog ? "Heroku build" : runtimeLog ? "Heroku" : "J.H.P";
+  const visibleLine = line.replace(/^(?:\[[^\]]+\]\s+)?\[Heroku (?:build|runtime)\]\s/, "");
+  const segments = ansiSegments(visibleLine);
   if (segments.length === 0) return null;
   return (
     <div className="group flex min-w-0 items-start gap-2 rounded-md px-2 py-1 hover:bg-white/[0.03]">
-      <span className="mt-0.5 shrink-0 rounded border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-sans text-[9px] font-semibold leading-none text-primary">J.H.P</span>
+      <span className={`mt-0.5 shrink-0 rounded border px-1.5 py-0.5 font-sans text-[9px] font-semibold leading-none ${source === "J.H.P" ? "border-primary/20 bg-primary/10 text-primary" : "border-sky-500/20 bg-sky-500/10 text-sky-300"}`}>{source}</span>
       <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-slate-200">
         {segments.map((segment, index) => <span key={index} style={segment.style}>{segment.text}</span>)}
       </span>
@@ -140,6 +144,7 @@ export default function DeploymentDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const lastRuntimeLogFetchRef = useRef(0);
 
   const [logs, setLogs] = useState<string[]>([]);
   const [deployStatus, setDeployStatus] = useState("building");
@@ -178,6 +183,7 @@ export default function DeploymentDetail() {
 
     async function fetchLogs() {
       let liveStatus: string | undefined;
+      let liveStatusData: any;
       try {
         if (deployment?.herokuAppId) {
           try {
@@ -185,6 +191,7 @@ export default function DeploymentDetail() {
             const statusData = await statusRes.json();
             if (!statusRes.ok) throw new Error(statusData.error ?? "Could not read Heroku status");
             liveStatus = statusData.status;
+            liveStatusData = statusData;
             setFailureReason(statusData.failureReason ?? null);
             setHerokuDeletedAt(statusData.herokuDeletedAt ?? null);
             setHerokuStatusError(null);
@@ -200,12 +207,18 @@ export default function DeploymentDetail() {
         setDeployStatus(status);
         const lines: string[] = data.lines ?? [];
 
-        if ((status === "online" || status === "failed") && deployment?.herokuAppId && !herokuDeletedAt) {
+        const terminalStatus = status === "online" || status === "failed";
+        const runtimeDynoAvailable = status === "building"
+          && liveStatusData?.dynos?.some((dyno: { state?: string }) => ["starting", "up", "crashed"].includes((dyno.state ?? "").toLowerCase()));
+        const shouldFetchRuntimeLogs = terminalStatus
+          || (runtimeDynoAvailable && Date.now() - lastRuntimeLogFetchRef.current >= 15_000);
+        if (shouldFetchRuntimeLogs && deployment?.herokuAppId && !herokuDeletedAt) {
+          lastRuntimeLogFetchRef.current = Date.now();
           try {
             const hRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
             const hData = await hRes.json();
             if (!hRes.ok) throw new Error(hData.error ?? "Could not fetch Heroku logs");
-            setLogs(hData.lines?.length ? [...lines, "", "-- Bot Output --", ...hData.lines] : lines);
+            setLogs(hData.lines?.length ? [...lines, "", "-- Heroku runtime logs --", ...hData.lines] : lines);
           } catch (error) {
             setLogs(lines);
             setHerokuStatusError(error instanceof Error ? error.message : "Could not fetch Heroku runtime logs");
@@ -213,7 +226,9 @@ export default function DeploymentDetail() {
         } else {
           setLogs(lines);
         }
-      } catch {}
+      } catch (error) {
+        setHerokuStatusError(error instanceof Error ? error.message : "Could not refresh deployment logs");
+      }
     }
 
     fetchLogs();
@@ -246,6 +261,7 @@ export default function DeploymentDetail() {
     try {
       const statusRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-status`, { headers: authHeader(), cache: "no-store" });
       const statusData = await statusRes.json();
+      if (!statusRes.ok) throw new Error(statusData.error ?? "Could not read Heroku status");
       if (statusRes.ok && statusData.status) setDeployStatus(statusData.status);
       if (statusRes.ok) {
         setFailureReason(statusData.failureReason ?? null);
@@ -254,11 +270,14 @@ export default function DeploymentDetail() {
       const deployRes = await fetch(`${API_BASE}/api/deployments/${id}/logs`, { headers: authHeader(), cache: "no-store" });
       const deployData = await deployRes.json();
       if (!deployRes.ok) throw new Error(deployData.error ?? "Could not read deployment events");
-      if ((statusData.status === "online" || statusData.status === "failed") && !statusData.herokuDeletedAt) {
+      const terminalStatus = statusData.status === "online" || statusData.status === "failed";
+      const runtimeDynoAvailable = statusData.status === "building"
+        && statusData.dynos?.some((dyno: { state?: string }) => ["starting", "up", "crashed"].includes((dyno.state ?? "").toLowerCase()));
+      if ((terminalStatus || runtimeDynoAvailable) && !statusData.herokuDeletedAt) {
         const herokuRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-logs`, { headers: authHeader(), cache: "no-store" });
         const herokuData = await herokuRes.json();
         if (!herokuRes.ok) throw new Error(herokuData.error ?? "Could not read Heroku runtime logs");
-        setLogs(herokuData.lines?.length ? [...(deployData.lines ?? []), "", "-- Bot Output --", ...herokuData.lines] : deployData.lines ?? []);
+        setLogs(herokuData.lines?.length ? [...(deployData.lines ?? []), "", "-- Heroku runtime logs --", ...herokuData.lines] : deployData.lines ?? []);
       } else setLogs(deployData.lines ?? []);
       setHerokuStatusError(null);
       toast({ title: "Heroku status and logs refreshed" });
@@ -352,6 +371,10 @@ export default function DeploymentDetail() {
           </div>
         </div>
 
+        {deployment.herokuAppId && (
+          <p className="-mt-3 text-xs text-muted-foreground">Runtime status comes from Heroku dynos. J.H.P cannot verify the WhatsApp session.</p>
+        )}
+
         {/* Building banner */}
         {isBuilding && (
           <div className="flex items-center gap-3 p-4 rounded-xl border border-blue-500/30 bg-blue-500/5">
@@ -368,8 +391,8 @@ export default function DeploymentDetail() {
           <div className="flex items-center gap-3 p-4 rounded-xl border border-red-500/30 bg-red-500/5">
             <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-red-400">{herokuDeletedAt ? "Bot failed and app removed" : "Bot failed"}</p>
-              <p className="text-xs text-muted-foreground">{failureReason ?? "Check the bot logs and configuration."}</p>
+              <p className="text-sm font-medium text-red-400">{herokuDeletedAt ? "Heroku app removed" : "Heroku reports failure"}</p>
+      <p className="text-xs text-muted-foreground">{failureReason ?? "Heroku reports that the bot process is not running."}</p>
             </div>
             {herokuDeletedAt ? (
               <Button size="sm" variant="outline" className="gap-1.5 flex-shrink-0 border-amber-500/30 text-amber-300 hover:bg-amber-500/10" asChild>

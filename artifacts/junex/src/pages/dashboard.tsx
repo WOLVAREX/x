@@ -54,7 +54,7 @@ function StatusBadge({ status }: { status: string }) {
         ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
         : <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
       }
-      {status}
+      {status === "online" ? "Dyno up" : status}
     </span>
   );
 }
@@ -127,7 +127,7 @@ export default function Dashboard() {
                 </h1>
                 <p className="text-sm text-muted-foreground mt-2">
                   {summary?.totalDeployments
-                    ? `You have ${summary.totalDeployments} bot${summary.totalDeployments !== 1 ? "s" : ""} deployed — ${summary.onlineCount} online`
+                    ? `You have ${summary.totalDeployments} bot${summary.totalDeployments !== 1 ? "s" : ""} deployed — ${summary.onlineCount} Heroku dynos up`
                     : "Welcome to J.H.P. Deploy your first bot to get started."}
                 </p>
               </div>
@@ -164,7 +164,7 @@ export default function Dashboard() {
                     bg: "bg-primary/10",
                   },
                   {
-                    label: "Online",
+                    label: "Dynos up",
                     value: summary.onlineCount,
                     icon: Activity,
                     color: "text-emerald-400",
@@ -286,7 +286,7 @@ export default function Dashboard() {
                           <CardContent className="pt-0">
                             <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
                               <p className="font-semibold">Bot needs recovery</p>
-                              <p className="mt-1 text-amber-100/80">{deployment.failureReason ?? "The bot session failed"}. Its Heroku app was removed. Recover it to redeploy.</p>
+                              <p className="mt-1 text-amber-100/80">{deployment.failureReason ?? "Heroku reported a runtime failure"}. Its Heroku app was removed. Recover it to redeploy.</p>
                               <Button asChild size="sm" variant="outline" className="mt-2 h-8 border-amber-500/40 text-amber-100 hover:bg-amber-500/15">
                                 <Link href={`/recover?appName=${encodeURIComponent(deployment.herokuAppId ?? deployment.botName)}`}>Recover bot</Link>
                               </Button>
