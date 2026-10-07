@@ -71,7 +71,8 @@ function ansiSegments(input: string): Array<{ text: string; style: CSSProperties
     .replace(/^\[[^\]]+\]\s*/, "")
     .replace(/^\d{4}-\d\d-\d\dT\S+\s+[^\s:]+(?:\[[^\]]+\])?:\s?/, "")
     .replace(/^(?:app|heroku)\[[^\]]+\]:\s?/, "")
-    .replace(/\u001b\[([\d;]*)m|\ufffd\[([\d;]*)m|\\x1b\[([\d;]*)m|\\u001b\[([\d;]*)m/g, "§§$1$2$3$4§§")
+    .replace(/\u009b([\d;:]*)m/g, "\u001b[$1m")
+    .replace(/\u001b\[([\d;:]*)m|\ufffd\[([\d;:]*)m|\\x1b\[([\d;:]*)m|\\u001b\[([\d;:]*)m/g, "§§$1$2$3$4§§")
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
   const segments: Array<{ text: string; style: CSSProperties }> = [];
   let style: CSSProperties = {};
@@ -81,7 +82,7 @@ function ansiSegments(input: string): Array<{ text: string; style: CSSProperties
       if (part) segments.push({ text: part, style: { ...style } });
       continue;
     }
-    const codes = (part || "0").split(";").map(Number);
+    const codes = (part || "0").replace(/:/g, ";").split(";").map((value) => value === "" ? Number.NaN : Number(value));
     for (let i = 0; i < codes.length; i++) {
       const code = codes[i];
       if (code === 0) style = {};
@@ -96,9 +97,13 @@ function ansiSegments(input: string): Array<{ text: string; style: CSSProperties
       else if (code === 49) delete style.backgroundColor;
       else if (code === 38 || code === 48) {
         const property = code === 38 ? "color" : "backgroundColor";
-        if (codes[i + 1] === 2 && codes.length >= i + 5) {
-          style[property] = `rgb(${codes[i + 2]}, ${codes[i + 3]}, ${codes[i + 4]})`;
-          i += 4;
+        if (codes[i + 1] === 2) {
+          let colorStart = i + 2;
+          if (Number.isNaN(codes[colorStart])) colorStart++;
+          if (codes.length >= colorStart + 3 && codes.slice(colorStart, colorStart + 3).every(Number.isFinite)) {
+            style[property] = `rgb(${codes[colorStart]}, ${codes[colorStart + 1]}, ${codes[colorStart + 2]})`;
+            i = colorStart + 2;
+          }
         } else if (codes[i + 1] === 5 && codes[i + 2] !== undefined) {
           const n = codes[i + 2];
           const cube = (v: number) => v === 0 ? 0 : 55 + 40 * v;
