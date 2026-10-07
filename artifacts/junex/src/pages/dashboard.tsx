@@ -333,10 +333,10 @@ export default function Dashboard() {
                             size="sm"
                             variant="outline"
                             className="flex-1 gap-1.5"
-                            disabled={restartMutation.isPending || deployment.status !== "online"}
+                            disabled={restartMutation.isPending || deployment.status === "building" || deployment.status === "queued"}
                             onClick={() => restartMutation.mutate({ id: deployment.id })}
                           >
-                            <RotateCcw className="h-3.5 w-3.5" /> Restart
+                            <RotateCcw className="h-3.5 w-3.5" /> {deployment.herokuDeletedAt ? "Redeploy" : "Restart"}
                           </Button>
                           <Button size="sm" variant="secondary" asChild className="px-3">
                             <Link href={`/deployments/${deployment.id}`}>View</Link>

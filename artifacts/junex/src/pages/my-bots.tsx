@@ -210,7 +210,7 @@ export default function MyBotsPage() {
                         ) : (
                           <DropdownMenuItem disabled={stopMutation.isPending || dep.status !== "online"} onSelect={() => stopMutation.mutate({ id: dep.id })}><Square /> Stop bot</DropdownMenuItem>
                         )}
-                        <DropdownMenuItem disabled={restartMutation.isPending || dep.status !== "online"} onSelect={() => restartMutation.mutate({ id: dep.id })}><RotateCcw /> Restart bot</DropdownMenuItem>
+                        <DropdownMenuItem disabled={restartMutation.isPending || dep.status === "building" || dep.status === "queued"} onSelect={() => restartMutation.mutate({ id: dep.id })}><RotateCcw /> {dep.herokuDeletedAt ? "Redeploy bot" : "Restart bot"}</DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget({ id: dep.id, botName: dep.botName })}><Trash2 /> Delete app</DropdownMenuItem>
                       </DropdownMenuContent>

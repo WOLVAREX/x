@@ -766,33 +766,102 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [row] = await db
-    .select({ deployment: deploymentsTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
+    .select({ deployment: deploymentsTable, template: templatesTable, templateName: templatesTable.name, templateThumbnail: templatesTable.thumbnail })
     .from(deploymentsTable)
     .leftJoin(templatesTable, eq(deploymentsTable.templateId, templatesTable.id))
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  if (row.deployment.herokuDeletedAt) { res.status(409).json({ error: "This Heroku app was removed. Recover the bot to deploy it again.", recover: true }); return; }
+  if (row.deployment.status === "building" || row.deployment.status === "queued") {
+    res.status(409).json({ error: "This bot is already deploying" }); return;
+  }
+  if (row.deployment.expiresAt && row.deployment.expiresAt <= new Date()) {
+    res.status(402).json({ error: "Hosting plan expired. Recover the bot to choose a renewal plan.", recover: true }); return;
+  }
+  if (!await getHerokuKey()) { res.status(503).json({ error: "Heroku is not configured" }); return; }
 
-  if (row.deployment.expiresAt && row.deployment.expiresAt <= new Date()) { res.status(402).json({ error: "Hosting plan expired. Choose a new plan from the recovery page.", recover: true }); return; }
+  const redeployDeletedApp = async () => {
+    if (!row.template) {
+      res.status(409).json({ error: "The bot template is unavailable. Contact support to recover this bot.", recover: true });
+      return;
+    }
+    const envVars = { ...((row.deployment.envVars as Record<string, string> | null) ?? {}) };
+    const fields = (row.template.appJson as any)?.env ?? {};
+    const missing = Object.entries(fields).find(([key, config]: [string, any]) => config.required !== false && !envVars[key]?.trim());
+    if (missing) {
+      res.status(409).json({ error: `Saved configuration is missing ${missing[0]}. Recover the bot to update it.`, recover: true });
+      return;
+    }
+    const [updated] = await db.update(deploymentsTable).set({
+      status: "building", failedAt: null, failureReason: null, herokuDeletedAt: null,
+    }).where(and(
+      eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id), isNull(deploymentsTable.archivedAt),
+      or(isNotNull(deploymentsTable.herokuDeletedAt), isNull(deploymentsTable.herokuAppId)),
+    )).returning();
+    if (!updated) {
+      res.status(409).json({ error: "This bot has already started restarting" });
+      return;
+    }
+    await appendLog(id, "Restart requested; redeploying the bot because its Heroku app was removed");
+    void herokuDeploy(id, row.template!, updated.botName, envVars);
+    res.status(202).json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
+  };
 
   const appName = row.deployment.herokuAppId;
-  if (!appName) { res.status(409).json({ error: "Heroku app is not available yet" }); return; }
-  if (!await getHerokuKey()) { res.status(503).json({ error: "Heroku is not configured" }); return; }
-  const restartResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/dynos`, {
+  if (row.deployment.herokuDeletedAt || !appName) {
+    await redeployDeletedApp();
+    return;
+  }
+
+  if (row.deployment.status === "online") {
+    const restartResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/dynos`, {
       method: "DELETE",
       headers: await herokuHeaders(),
     });
-  if (!restartResponse.ok) {
-    const errorBody = await restartResponse.json().catch(() => ({})) as { message?: string };
-    await appendLog(id, `Heroku rejected the dyno restart request (${restartResponse.status}): ${errorBody.message ?? restartResponse.statusText}`);
-    res.status(502).json({ error: errorBody.message ?? "Heroku rejected the dyno restart request" });
-    return;
+    if (!restartResponse.ok) {
+      const errorBody = await restartResponse.json().catch(() => ({})) as { message?: string };
+      if (restartResponse.status === 404) {
+        await db.update(deploymentsTable).set({ herokuDeletedAt: new Date() }).where(eq(deploymentsTable.id, id));
+        await redeployDeletedApp();
+        return;
+      }
+      await appendLog(id, `Heroku rejected the dyno restart request (${restartResponse.status}): ${errorBody.message ?? restartResponse.statusText}`);
+      res.status(502).json({ error: errorBody.message ?? "Heroku rejected the dyno restart request" });
+      return;
+    }
+  } else {
+    let scaleResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
+      method: "PATCH",
+      headers: await herokuHeaders(),
+      body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: "eco" }] }),
+    });
+    let dynoType = "worker";
+    if (!scaleResponse.ok && scaleResponse.status !== 404) {
+      dynoType = "web";
+      scaleResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
+        method: "PATCH",
+        headers: await herokuHeaders(),
+        body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: "eco" }] }),
+      });
+    }
+    if (!scaleResponse.ok) {
+      const errorBody = await scaleResponse.json().catch(() => ({})) as { message?: string };
+      if (scaleResponse.status === 404) {
+        await db.update(deploymentsTable).set({ herokuDeletedAt: new Date() }).where(eq(deploymentsTable.id, id));
+        await redeployDeletedApp();
+        return;
+      }
+      await appendLog(id, `Heroku rejected the ${dynoType} start request (${scaleResponse.status}): ${errorBody.message ?? scaleResponse.statusText}`);
+      res.status(502).json({ error: errorBody.message ?? "Heroku rejected the bot start request" });
+      return;
+    }
   }
 
   const [updated] = await db.update(deploymentsTable)
     .set({ status: "building", failedAt: null, failureReason: null })
     .where(eq(deploymentsTable.id, id)).returning();
-  await appendLog(id, "Heroku accepted the dyno restart request; waiting for dyno status confirmation");
+  await appendLog(id, row.deployment.status === "online"
+    ? "Heroku accepted the dyno restart request; waiting for dyno status confirmation"
+    : "Restart requested; Heroku is starting the bot dyno again");
 
   res.json(formatDeployment(updated, row.templateName ?? "Unknown", row.templateThumbnail));
 });

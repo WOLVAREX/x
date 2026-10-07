@@ -518,8 +518,8 @@ export default function DeploymentDetail() {
                   </Button>
                 )}
                 <Button size="sm" variant="outline" className="gap-1.5"
-                  disabled={restartMutation.isPending || deployStatus !== "online"} onClick={() => restartMutation.mutate({ id })}>
-                  <RotateCcw className="h-3.5 w-3.5" /> Restart
+                  disabled={restartMutation.isPending || deployStatus === "building" || deployStatus === "queued"} onClick={() => restartMutation.mutate({ id })}>
+                  <RotateCcw className="h-3.5 w-3.5" /> {herokuDeletedAt ? "Redeploy" : "Restart"}
                 </Button>
               </>}
               <Button size="sm" variant="outline" className="gap-1.5" onClick={handleRefreshLogs} disabled={isRefreshingLogs}>
