@@ -123,13 +123,13 @@ function LogLine({ line }: { line: string }) {
   if (divider) return <div className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-slate-800" />{divider[1]}<span className="h-px flex-1 bg-slate-800" /></div>;
   const buildLog = /^\[(?:[^\]]+)\]\s+\[Heroku build\]\s/.test(line) || /^\[Heroku build\]\s/.test(line);
   const runtimeLog = /^\[(?:[^\]]+)\]\s+\[Heroku runtime\]\s/.test(line) || /^\[Heroku runtime\]\s/.test(line);
-  const source = buildLog ? "Heroku build" : runtimeLog ? "Heroku" : "J.H.P";
+  const source = buildLog ? "JHP Build" : runtimeLog ? "Heroku" : "J.H.P";
   const visibleLine = line.replace(/^(?:\[[^\]]+\]\s+)?\[Heroku (?:build|runtime)\]\s/, "");
   const segments = ansiSegments(visibleLine);
   if (segments.length === 0) return null;
   return (
     <div className="group flex min-w-0 items-start gap-2 rounded-md px-2 py-1 hover:bg-white/[0.03]">
-      <span className="mt-0.5 shrink-0 rounded border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-sans text-[9px] font-semibold leading-none text-primary">J.H.P</span>
+      {!buildLog && <span className="mt-0.5 shrink-0 rounded border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-sans text-[9px] font-semibold leading-none text-primary">J.H.P</span>}
       {source !== "J.H.P" && <span className="mt-0.5 shrink-0 rounded border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 font-sans text-[9px] font-semibold leading-none text-sky-300">{source}</span>}
       <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-slate-200">
         {segments.map((segment, index) => <span key={index} style={segment.style}>{segment.text}</span>)}

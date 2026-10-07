@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import {
   Loader2, Search, Bot, Play, Square, RotateCcw,
-  Terminal, ExternalLink, Trash2, Plus, AlertCircle, Copy, Coins,
+  Terminal, Trash2, Plus, AlertCircle, Copy, Coins,
   CheckCircle2, Clock, XCircle, MoreHorizontal, Pencil,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -190,7 +190,6 @@ export default function MyBotsPage() {
                         <button type="button" className="inline-flex min-w-0 items-center gap-1 rounded px-1 py-1 hover:text-primary" title="Copy Heroku app name" onClick={() => navigator.clipboard.writeText(dep.herokuAppId!).then(() => toast({ title: "App name copied" })).catch(() => toast({ title: "Could not copy app name", variant: "destructive" }))}>
                           <Copy className="h-3 w-3 shrink-0" /><span className="max-w-32 truncate font-mono">{dep.herokuAppId}</span>
                         </button>
-                        <a href={`https://${dep.herokuAppId}.herokuapp.com`} target="_blank" rel="noopener noreferrer" aria-label="Open bot on Heroku" className="p-1 hover:text-primary"><ExternalLink className="h-3 w-3" /></a>
                       </div>
                     )}
                   </div>
