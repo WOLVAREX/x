@@ -30,6 +30,12 @@ import {
 
 const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 
+function herokuAppUrl(appId: string): string {
+  const host = appId.trim().replace(/^https?:\/\//i, "").split(/[/?#]/, 1)[0].replace(/\.$/, "");
+  const canonicalHost = host.toLowerCase().endsWith(".herokuapp.com") ? host : `${host}.herokuapp.com`;
+  return `https://${canonicalHost}`;
+}
+
 function authHeader() {
   const token = localStorage.getItem("junex_token");
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
@@ -434,7 +440,7 @@ export default function DeploymentDetail() {
             {deployment.herokuAppId && (
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigator.clipboard.writeText(deployment.herokuAppId!).then(() => toast({ title: "App name copied", description: "Keep it to recover this bot later." })).catch(() => toast({ title: "Could not copy app name", variant: "destructive" }))}><Copy className="h-3.5 w-3.5" /> Copy app name</Button>
-                <Button variant="outline" size="sm" className="gap-1.5" asChild><a href={`https://${deployment.herokuAppId}.herokuapp.com`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3.5 w-3.5" /> View App</a></Button>
+                <Button variant="outline" size="sm" className="gap-1.5" asChild><a href={herokuAppUrl(deployment.herokuAppId)} target="_blank" rel="noopener noreferrer" title={`Open ${herokuAppUrl(deployment.herokuAppId)}`}><ExternalLink className="h-3.5 w-3.5" /> View App</a></Button>
               </div>
             )}
           </div>
