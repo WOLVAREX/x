@@ -30,10 +30,14 @@ import {
 
 const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 
-function herokuAppUrl(appId: string): string {
-  const host = appId.trim().replace(/^https?:\/\//i, "").split(/[/?#]/, 1)[0].replace(/\.$/, "");
-  const canonicalHost = host.toLowerCase().endsWith(".herokuapp.com") ? host : `${host}.herokuapp.com`;
-  return `https://${canonicalHost}`;
+function loggedHerokuAppUrl(lines: string[]): string | null {
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const line = lines[index];
+    if (!/deployed to Heroku\b/i.test(line)) continue;
+    const match = line.match(/https:\/\/([a-z0-9-]+\.herokuapp\.com)(?=\/|\s|$)/i);
+    if (match) return `https://${match[1]}`;
+  }
+  return null;
 }
 
 function authHeader() {
@@ -172,6 +176,7 @@ export default function DeploymentDetail() {
   const [herokuDeletedAt, setHerokuDeletedAt] = useState<string | null>(null);
 
   const { data: deployment, isLoading } = useGetDeployment(id);
+  const viewAppUrl = loggedHerokuAppUrl(logs);
 
   useEffect(() => {
     if (deployment?.envVars) setEnvVars(deployment.envVars as Record<string, string>);
@@ -440,7 +445,7 @@ export default function DeploymentDetail() {
             {deployment.herokuAppId && (
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigator.clipboard.writeText(deployment.herokuAppId!).then(() => toast({ title: "App name copied", description: "Keep it to recover this bot later." })).catch(() => toast({ title: "Could not copy app name", variant: "destructive" }))}><Copy className="h-3.5 w-3.5" /> Copy app name</Button>
-                <Button variant="outline" size="sm" className="gap-1.5" asChild><a href={herokuAppUrl(deployment.herokuAppId)} target="_blank" rel="noopener noreferrer" title={`Open ${herokuAppUrl(deployment.herokuAppId)}`}><ExternalLink className="h-3.5 w-3.5" /> View App</a></Button>
+                {viewAppUrl && <Button variant="outline" size="sm" className="gap-1.5" asChild><a href={viewAppUrl} target="_blank" rel="noopener noreferrer" title={`Open ${viewAppUrl}`}><ExternalLink className="h-3.5 w-3.5" /> View App</a></Button>}
               </div>
             )}
           </div>

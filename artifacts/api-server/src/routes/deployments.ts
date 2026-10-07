@@ -266,7 +266,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       return;
     }
 
-    await appendLog(deploymentId, `App created: ${createData.name}.herokuapp.com`);
+    await appendLog(deploymentId, `Heroku app created: ${createData.name}`);
     if (typeof createData.stack?.name === "string") {
       await appendLog(deploymentId, `Heroku selected stack: ${createData.stack.name}`);
     }
@@ -486,7 +486,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     // ── Step 7: Mark as online ───────────────────────────────
     await appendLog(deploymentId, "");
     await appendLog(deploymentId, "Heroku confirmed the dyno is up. WhatsApp session connectivity is not verified by J.H.P.");
-    await appendLog(deploymentId, `Heroku app: https://${appName}.herokuapp.com`);
+    await appendLog(deploymentId, `Heroku app name: ${appName}`);
 
     await db.update(deploymentsTable)
       .set({ status: "online", herokuAppId: appName })
