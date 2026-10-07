@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "wouter";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Layout } from "@/components/layout";
@@ -100,16 +100,82 @@ function StatCard({ title, value, icon: Icon, gradient, sub }: {
   );
 }
 
+const logAnsiColor = (code: number): string | undefined => {
+  const basic = ["#111827", "#ef4444", "#22c55e", "#eab308", "#3b82f6", "#a855f7", "#06b6d4", "#d1d5db"];
+  const bright = ["#6b7280", "#f87171", "#4ade80", "#fde047", "#60a5fa", "#c084fc", "#22d3ee", "#ffffff"];
+  if (code >= 30 && code <= 37) return basic[code - 30];
+  if (code >= 90 && code <= 97) return bright[code - 90];
+  if (code >= 40 && code <= 47) return basic[code - 40];
+  if (code >= 100 && code <= 107) return bright[code - 100];
+  return undefined;
+};
+
+function logAnsiSegments(input: string): Array<{ text: string; style: CSSProperties }> {
+  const line = input
+    .replace(/^\[(?:Heroku )?runtime\]\s*/i, "")
+    .replace(/^\d{4}-\d\d-\d\dT\S+\s+[^\s:]+(?:\[[^\]]+\])?:\s?/, "")
+    .replace(/^(?:app|heroku)\[[^\]]+\]:\s?/, "")
+    .replace(/\u009b([\d;:]*)m/g, "\u001b[$1m")
+    .replace(/\u001b\[([\d;:]*)m|\ufffd\[([\d;:]*)m|\\x1b\[([\d;:]*)m|\\u001b\[([\d;:]*)m/g, "§§$1$2$3$4§§")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+  const segments: Array<{ text: string; style: CSSProperties }> = [];
+  let style: CSSProperties = {};
+  for (const [index, part] of line.split("§§").entries()) {
+    if (index % 2 === 0) {
+      if (part) segments.push({ text: part, style: { ...style } });
+      continue;
+    }
+    const codes = (part || "0").replace(/:/g, ";").split(";").map((value) => value === "" ? Number.NaN : Number(value));
+    for (let i = 0; i < codes.length; i++) {
+      const code = codes[i];
+      if (code === 0) style = {};
+      else if (code === 1) style.fontWeight = 700;
+      else if (code === 2) style.opacity = 0.75;
+      else if (code === 3) style.fontStyle = "italic";
+      else if (code === 4) style.textDecoration = "underline";
+      else if (code === 22) { delete style.fontWeight; delete style.opacity; }
+      else if (code === 23) delete style.fontStyle;
+      else if (code === 24) delete style.textDecoration;
+      else if (code === 39) delete style.color;
+      else if (code === 49) delete style.backgroundColor;
+      else if (code === 38 || code === 48) {
+        const property = code === 38 ? "color" : "backgroundColor";
+        if (codes[i + 1] === 2) {
+          let start = i + 2;
+          if (Number.isNaN(codes[start])) start++;
+          if (codes.length >= start + 3 && codes.slice(start, start + 3).every(Number.isFinite)) {
+            style[property] = `rgb(${codes[start]}, ${codes[start + 1]}, ${codes[start + 2]})`;
+            i = start + 2;
+          }
+        } else if (codes[i + 1] === 5 && codes[i + 2] !== undefined) {
+          const n = codes[i + 2];
+          const cube = (v: number) => v === 0 ? 0 : 55 + 40 * v;
+          const color = n < 16 ? logAnsiColor(n < 8 ? n + (code === 38 ? 30 : 40) : n + (code === 38 ? 82 : 92)) : n < 232
+            ? `rgb(${cube(Math.floor((n - 16) / 36))}, ${cube(Math.floor(((n - 16) % 36) / 6))}, ${cube((n - 16) % 6)})`
+            : `rgb(${8 + (n - 232) * 10}, ${8 + (n - 232) * 10}, ${8 + (n - 232) * 10})`;
+          if (color) style[property] = color;
+          i += 2;
+        }
+      } else {
+        const color = logAnsiColor(code);
+        if (color) style[code >= 40 && code <= 47 || code >= 100 && code <= 107 ? "backgroundColor" : "color"] = color;
+      }
+    }
+  }
+  return segments;
+}
+
 function LogLine({ line }: { line: string }) {
   if (!line || line.trim() === "") return <div className="h-1.5" />;
-  const isError = line.includes("ERROR") || line.includes("error");
-  const isSuccess = line.includes("successful") || line.includes("online") || line.includes("live");
-  const isDivider = line.startsWith("--");
-  return (
-    <div className={`font-mono text-xs leading-5 ${
-      isError ? "text-red-400" : isSuccess ? "text-emerald-400" : isDivider ? "text-slate-500 italic" : "text-slate-300"
-    }`}>{line}</div>
-  );
+  const divider = line.match(/^--\s*(.*?)\s*--$/);
+  if (divider) return <div className="my-3 flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-slate-800" />{divider[1].replace(/Heroku/gi, "J.H.P")}<span className="h-px flex-1 bg-slate-800" /></div>;
+  const message = line.replace(/^\[(?:Heroku )?runtime\]\s*/i, "");
+  const segments = logAnsiSegments(message);
+  if (!segments.length) return null;
+  return <div className="group flex min-w-0 items-start gap-2 rounded-md px-2 py-1 hover:bg-white/[0.03]">
+    <span className="mt-0.5 shrink-0 rounded border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-sans text-[9px] font-semibold leading-none text-primary">J.H.P</span>
+    <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-slate-200">{segments.map((segment, index) => <span key={index} style={segment.style}>{segment.text}</span>)}</span>
+  </div>;
 }
 
 export default function AdminDashboard() {
@@ -1228,16 +1294,16 @@ export default function AdminDashboard() {
 
         {/* Bot Logs Modal */}
         <Dialog open={!!logsBot} onOpenChange={(v) => { if (!v) setLogsBot(null); }}>
-          <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+          <DialogContent className="flex max-h-[88vh] w-[calc(100vw-2rem)] max-w-4xl flex-col gap-0 overflow-hidden border-border/60 p-0">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Terminal className="h-5 w-5 text-primary" />
-                Logs: {logsBot?.name}
+              <DialogTitle className="flex items-center gap-3 border-b border-border/50 px-5 py-4 pr-12">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10"><Terminal className="h-5 w-5 text-primary" /></span>
+                <span className="min-w-0"><span className="block truncate">J.H.P Logs: {logsBot?.name}</span><span className="mt-0.5 block text-xs font-normal text-muted-foreground">Bot output with original terminal colors</span></span>
               </DialogTitle>
             </DialogHeader>
-            <div className="bg-[#060a10] rounded-xl h-[50vh] overflow-hidden">
+            <div className="mx-4 my-4 min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-800/80 bg-[#060a10] shadow-inner">
               <ScrollArea className="h-full">
-                <div className="p-4 space-y-0">
+                <div className="space-y-0 p-3 sm:p-4">
                   {isLoadingBotLogs ? (
                     <div className="flex items-center gap-2 text-slate-500 text-xs font-mono">
                       <Loader2 className="h-3 w-3 animate-spin" /> Loading logs...
@@ -1250,7 +1316,7 @@ export default function AdminDashboard() {
                 </div>
               </ScrollArea>
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end border-t border-border/50 px-5 py-3">
               <Button variant="outline" size="sm" className="gap-2"
                 onClick={() => logsBot && handleViewBotLogs(logsBot.id, logsBot.name)}>
                 <RefreshCw className="h-3.5 w-3.5" /> Refresh
