@@ -25,7 +25,13 @@ async function openLogSession(
   } catch {
     throw new Error("Heroku returned an invalid Logplex URL");
   }
-  if (logplexUrl.protocol !== "https:" || logplexUrl.hostname !== "logplex.heroku.com") {
+  const hostname = logplexUrl.hostname.toLowerCase().replace(/\.$/, "");
+  const isHerokuLogplexHost = hostname === "logplex.heroku.com"
+    || hostname.endsWith(".logplex.heroku.com")
+    || hostname === "logplex.io"
+    || hostname.endsWith(".logplex.io");
+  if (logplexUrl.protocol !== "https:" || logplexUrl.port && logplexUrl.port !== "443"
+    || logplexUrl.username || logplexUrl.password || !isHerokuLogplexHost) {
     throw new Error("Heroku returned an unexpected Logplex host");
   }
 
