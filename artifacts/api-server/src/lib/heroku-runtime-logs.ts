@@ -28,6 +28,8 @@ async function openLogSession(
   const hostname = logplexUrl.hostname.toLowerCase().replace(/\.$/, "");
   const isHerokuLogplexHost = hostname === "logplex.heroku.com"
     || hostname.endsWith(".logplex.heroku.com")
+    || hostname === "sessions.logs.heroku.com"
+    || hostname.endsWith(".sessions.logs.heroku.com")
     || hostname === "logplex.io"
     || hostname.endsWith(".logplex.io");
   if (logplexUrl.protocol !== "https:" || logplexUrl.port && logplexUrl.port !== "443"
