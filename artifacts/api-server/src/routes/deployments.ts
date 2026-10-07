@@ -34,6 +34,11 @@ async function getHerokuTeam(): Promise<string> {
   return getSetting("HEROKU_TEAM_NAME");
 }
 
+async function getHerokuDynoSize(): Promise<"basic" | "eco"> {
+  const [teamName, teamKey] = await Promise.all([getHerokuTeam(), getSetting("HEROKU_TEAM_API_KEY")]);
+  return teamName || teamKey ? "basic" : "eco";
+}
+
 async function herokuHeaders(accept = "application/vnd.heroku+json; version=3") {
   return {
     Authorization: `Bearer ${await getHerokuKey()}`,
@@ -252,6 +257,8 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     if (requestedStack) await appendLog(deploymentId, `Requesting Heroku stack from app.json: ${requestedStack}`);
 
     const teamName = await getHerokuTeam();
+    const dynoSize = await getHerokuDynoSize();
+    await appendLog(deploymentId, `Using ${dynoSize} dynos for this Heroku account`);
     const createRes = await fetch(`${HEROKU_BASE}${teamName ? "/teams/apps" : "/apps"}`, {
       method: "POST",
       headers: await herokuHeaders(),
@@ -448,7 +455,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
     const scaleRes = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
       method: "PATCH",
       headers: await herokuHeaders(),
-      body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: "eco" }] }),
+      body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: dynoSize }] }),
     });
 
     let dynoType: string | null = null;
@@ -458,7 +465,7 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
       const scaleRes2 = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
         method: "PATCH",
         headers: await herokuHeaders(),
-        body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: "eco" }] }),
+        body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: dynoSize }] }),
       });
       if (!scaleRes2.ok) {
         const errorBody = await scaleRes2.json().catch(() => ({})) as { message?: string };
@@ -467,11 +474,11 @@ async function herokuDeploy(deploymentId: number, template: typeof templatesTabl
           .where(eq(deploymentsTable.id, deploymentId));
         return;
       } else {
-        await appendLog(deploymentId, "Heroku accepted the web dyno scale request (1x eco)");
+        await appendLog(deploymentId, `Heroku accepted the web dyno scale request (${dynoSize})`);
         dynoType = "web";
       }
     } else {
-      await appendLog(deploymentId, "Heroku accepted the worker dyno scale request (1x eco)");
+      await appendLog(deploymentId, `Heroku accepted the worker dyno scale request (${dynoSize})`);
       dynoType = "worker";
     }
 
@@ -703,11 +710,12 @@ router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<voi
   const appName = row.deployment.herokuAppId;
   if (!appName) { res.status(409).json({ error: "Heroku app is not available yet" }); return; }
   if (!await getHerokuKey()) { res.status(503).json({ error: "Heroku is not configured" }); return; }
+  const dynoSize = await getHerokuDynoSize();
   let dynoType = "worker";
   let scaleResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
       method: "PATCH",
       headers: await herokuHeaders(),
-      body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: "eco" }] }),
+      body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: dynoSize }] }),
     });
   if (!scaleResponse.ok) {
     await appendLog(id, `Heroku rejected the worker start request (${scaleResponse.status}); trying web`);
@@ -715,7 +723,7 @@ router.post("/deployments/:id/start", requireAuth, async (req, res): Promise<voi
     scaleResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
       method: "PATCH",
       headers: await herokuHeaders(),
-      body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: "eco" }] }),
+      body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: dynoSize }] }),
     });
   }
   if (!scaleResponse.ok) {
@@ -812,6 +820,7 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
     return;
   }
 
+  const dynoSize = await getHerokuDynoSize();
   if (row.deployment.status === "online") {
     const restartResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/dynos`, {
       method: "DELETE",
@@ -832,7 +841,7 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
     let scaleResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
       method: "PATCH",
       headers: await herokuHeaders(),
-      body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: "eco" }] }),
+      body: JSON.stringify({ updates: [{ type: "worker", quantity: 1, size: dynoSize }] }),
     });
     let dynoType = "worker";
     if (!scaleResponse.ok && scaleResponse.status !== 404) {
@@ -840,7 +849,7 @@ router.post("/deployments/:id/restart", requireAuth, async (req, res): Promise<v
       scaleResponse = await fetch(`${HEROKU_BASE}/apps/${appName}/formation`, {
         method: "PATCH",
         headers: await herokuHeaders(),
-        body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: "eco" }] }),
+        body: JSON.stringify({ updates: [{ type: "web", quantity: 1, size: dynoSize }] }),
       });
     }
     if (!scaleResponse.ok) {
