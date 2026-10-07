@@ -122,8 +122,7 @@ function LogLine({ line }: { line: string }) {
   const divider = line.match(/^--\s*(.*?)\s*--$/);
   if (divider) return <div className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-slate-800" />{divider[1]}<span className="h-px flex-1 bg-slate-800" /></div>;
   const buildLog = /^\[(?:[^\]]+)\]\s+\[Heroku build\]\s/.test(line) || /^\[Heroku build\]\s/.test(line);
-  const runtimeLog = /^\[(?:[^\]]+)\]\s+\[Heroku runtime\]\s/.test(line) || /^\[Heroku runtime\]\s/.test(line);
-  const source = buildLog ? "JHP Build" : runtimeLog ? "Heroku" : "J.H.P";
+  const source = buildLog ? "JHP Build" : "J.H.P";
   const visibleLine = line.replace(/^(?:\[[^\]]+\]\s+)?\[Heroku (?:build|runtime)\]\s/, "");
   const segments = ansiSegments(visibleLine);
   if (segments.length === 0) return null;
@@ -144,7 +143,8 @@ export default function DeploymentDetail() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsViewportRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollLogsRef = useRef(true);
   const deploymentLogLinesRef = useRef<string[]>([]);
   const runtimeLogLinesRef = useRef<string[]>([]);
 
@@ -209,7 +209,7 @@ export default function DeploymentDetail() {
         const lines: string[] = data.lines ?? [];
         deploymentLogLinesRef.current = lines;
         setLogs(runtimeLogLinesRef.current.length
-          ? [...lines, "", "-- Heroku runtime logs --", ...runtimeLogLinesRef.current]
+          ? [...lines, "", "-- J.H.P runtime logs --", ...runtimeLogLinesRef.current]
           : lines);
       } catch (error) {
         setHerokuStatusError(error instanceof Error ? error.message : "Could not refresh deployment logs");
@@ -244,7 +244,7 @@ export default function DeploymentDetail() {
       setLogs([
         ...deploymentLogLinesRef.current,
         "",
-        "-- Heroku runtime logs --",
+        "-- J.H.P runtime logs --",
         ...runtimeLogLinesRef.current,
       ]);
     };
@@ -304,9 +304,11 @@ export default function DeploymentDetail() {
     };
   }, [id, deployment?.herokuAppId, deployStatus, herokuDeletedAt]);
 
-  // Auto scroll
+  // Keep following new logs only while the user is already at the bottom.
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!shouldAutoScrollLogsRef.current) return;
+    const viewport = logsViewportRef.current?.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
+    if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, [logs]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetDeploymentQueryKey(id) });
@@ -340,7 +342,7 @@ export default function DeploymentDetail() {
       const lines: string[] = deployData.lines ?? [];
       deploymentLogLinesRef.current = lines;
       setLogs(runtimeLogLinesRef.current.length
-        ? [...lines, "", "-- Heroku runtime logs --", ...runtimeLogLinesRef.current]
+        ? [...lines, "", "-- J.H.P runtime logs --", ...runtimeLogLinesRef.current]
         : lines);
       setHerokuStatusError(null);
       toast({ title: "Heroku status and logs refreshed" });
@@ -529,7 +531,14 @@ export default function DeploymentDetail() {
               {herokuStatusError && <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-300">Heroku status check: {herokuStatusError}</div>}
               <CardContent className="p-0">
                 <div className="relative h-[60vh] overflow-hidden rounded-b-xl bg-[#080d14]">
-                  <ScrollArea className="h-full w-full">
+                  <ScrollArea
+                    ref={logsViewportRef}
+                    className="h-full w-full"
+                    onScrollCapture={(event) => {
+                      const viewport = event.target as HTMLElement;
+                      shouldAutoScrollLogsRef.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80;
+                    }}
+                  >
                     <div className="space-y-0 p-4 sm:p-5">
                       {logs.length === 0 ? (
                         <div className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] p-4 font-mono text-xs text-slate-400">
@@ -538,7 +547,7 @@ export default function DeploymentDetail() {
                       ) : (
                         logs.map((line, i) => <LogLine key={i} line={line} />)
                       )}
-                      <div ref={logsEndRef} className="h-2" />
+                      <div className="h-2" />
                     </div>
                   </ScrollArea>
                   <div className="absolute top-0 left-0 w-full h-6 bg-gradient-to-b from-[#060a10] to-transparent pointer-events-none" />
