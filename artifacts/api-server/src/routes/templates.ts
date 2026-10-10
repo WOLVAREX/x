@@ -64,8 +64,15 @@ router.get("/templates", async (req, res): Promise<void> => {
     .from(deploymentsTable)
     .groupBy(deploymentsTable.templateId);
   const countMap = Object.fromEntries(counts.map(c => [c.templateId, c.count]));
+  const rankedTemplates = templates
+    .map(t => formatTemplate(t, countMap[t.id] ?? 0))
+    .sort((a, b) =>
+      Number(b.isFeatured) - Number(a.isFeatured)
+      || b.deployCount - a.deployCount
+      || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
-  res.json(templates.map(t => formatTemplate(t, countMap[t.id] ?? 0)));
+  res.json(rankedTemplates);
 });
 
 router.get("/templates/categories", async (_req, res): Promise<void> => {
