@@ -5,16 +5,24 @@ import { useListTemplates, useListTemplateCategories } from "@workspace/api-clie
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Github, Bot, Zap, Gift, Globe, Coins, Star, Activity } from "lucide-react";
+import { Loader2, Search, Github, Bot, Zap, Gift, Globe, Coins, Star, Activity, ChevronLeft, ChevronRight } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
+
+const TEMPLATES_PER_PAGE = 10;
 
 export default function Templates() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string | undefined>();
+  const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 500);
 
   const { data: templates, isLoading } = useListTemplates({ search: debouncedSearch || undefined, category });
   const { data: categories } = useListTemplateCategories();
+  const templateList = templates ?? [];
+  const totalPages = Math.max(1, Math.ceil(templateList.length / TEMPLATES_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const firstTemplate = (currentPage - 1) * TEMPLATES_PER_PAGE;
+  const visibleTemplates = templateList.slice(firstTemplate, firstTemplate + TEMPLATES_PER_PAGE);
 
   return (
     <Layout>
@@ -28,16 +36,16 @@ export default function Templates() {
           <div className="relative flex-1 sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input type="search" placeholder="Search templates..." className="pl-9"
-              value={search} onChange={(e) => setSearch(e.target.value)} />
+              value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
           </div>
           <div className="flex gap-2 flex-wrap">
             <Badge variant={!category ? "default" : "outline"}
               className="cursor-pointer text-xs py-1.5 px-3 whitespace-nowrap"
-              onClick={() => setCategory(undefined)}>All</Badge>
+              onClick={() => { setCategory(undefined); setPage(1); }}>All</Badge>
             {categories?.map((cat) => (
               <Badge key={cat} variant={category === cat ? "default" : "outline"}
                 className="cursor-pointer text-xs py-1.5 px-3 whitespace-nowrap"
-                onClick={() => setCategory(cat)}>{cat}</Badge>
+                onClick={() => { setCategory(cat); setPage(1); }}>{cat}</Badge>
             ))}
           </div>
         </div>
@@ -50,11 +58,12 @@ export default function Templates() {
           <div className="text-center py-20 border rounded-xl border-dashed bg-muted/20">
             <Bot className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
             <p className="text-base font-medium text-muted-foreground">No templates found</p>
-            <Button variant="link" onClick={() => { setSearch(""); setCategory(undefined); }}>Clear filters</Button>
+            <Button variant="link" onClick={() => { setSearch(""); setCategory(undefined); setPage(1); }}>Clear filters</Button>
           </div>
         ) : (
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {templates?.map((template) => (
+          <>
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {visibleTemplates.map((template) => (
               <div key={template.id}
                 className="rounded-xl border border-border/40 bg-card hover:border-primary/30 hover:shadow-md transition-all flex flex-col">
                 <div className="p-4 flex-1">
@@ -124,7 +133,41 @@ export default function Templates() {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="mt-8 flex flex-col items-center justify-between gap-3 border-t border-border/40 pt-5 sm:flex-row">
+                <p className="text-sm text-muted-foreground">
+                  Showing {firstTemplate + 1}-{Math.min(firstTemplate + TEMPLATES_PER_PAGE, templateList.length)} of {templateList.length} templates
+                </p>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={currentPage === 1}
+                    onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Previous
+                  </Button>
+                  <span className="min-w-24 text-center text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                  >
+                    Next <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </Layout>
