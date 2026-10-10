@@ -33,11 +33,18 @@ const API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "";
 function loggedHerokuAppUrl(lines: string[]): string | null {
   for (let index = lines.length - 1; index >= 0; index--) {
     const line = lines[index];
-    if (!/deployed to Heroku\b/i.test(line)) continue;
+    if (!/deployed to (?:Heroku|JHP)\b/i.test(line)) continue;
     const match = line.match(/https:\/\/([a-z0-9-]+\.herokuapp\.com)(?=\/|\s|$)/i);
     if (match) return `https://${match[1]}`;
   }
   return null;
+}
+
+function brandLogLine(line: string): string {
+  return line
+    .replace(/\bHeroku build\b/gi, "JHP Build")
+    .replace(/\bHeroku runtime\b/gi, "JHP")
+    .replace(/\bHeroku\b/gi, "JHP");
 }
 
 function authHeader() {
@@ -133,12 +140,13 @@ function ansiSegments(input: string): Array<{ text: string; style: CSSProperties
 }
 
 function LogLine({ line }: { line: string }) {
+  line = brandLogLine(line);
   if (!line || line.trim() === "") return <div className="h-1.5" />;
   const divider = line.match(/^--\s*(.*?)\s*--$/);
   if (divider) return <div className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-slate-800" />{divider[1]}<span className="h-px flex-1 bg-slate-800" /></div>;
-  const buildLog = /^\[(?:[^\]]+)\]\s+\[Heroku build\]\s/.test(line) || /^\[Heroku build\]\s/.test(line);
-  const source = buildLog ? "JHP Build" : "J.H.P";
-  const visibleLine = line.replace(/^(?:\[[^\]]+\]\s+)?\[Heroku (?:build|runtime)\]\s/, "");
+  const buildLog = /^\[(?:[^\]]+)\]\s+\[JHP Build\]\s/i.test(line) || /^\[JHP Build\]\s/i.test(line);
+  const source = buildLog ? "JHP Build" : "JHP";
+  const visibleLine = line.replace(/^(?:\[[^\]]+\]\s+)?\[(?:JHP Build|JHP)\]\s/i, "");
   const segments = ansiSegments(visibleLine);
   if (segments.length === 0) return null;
   return (
@@ -206,13 +214,13 @@ export default function DeploymentDetail() {
           try {
             const statusRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-status`, { headers: authHeader(), cache: "no-store" });
             const statusData = await statusRes.json();
-            if (!statusRes.ok) throw new Error(statusData.error ?? "Could not read Heroku status");
+            if (!statusRes.ok) throw new Error(statusData.error ?? "Could not read JHP status");
             liveStatus = statusData.status;
             setFailureReason(statusData.failureReason ?? null);
             setHerokuDeletedAt(statusData.herokuDeletedAt ?? null);
             setHerokuStatusError(null);
           } catch (error) {
-            setHerokuStatusError(error instanceof Error ? error.message : "Could not read Heroku status");
+            setHerokuStatusError(error instanceof Error ? brandLogLine(error.message) : "Could not read JHP status");
           }
         }
 
@@ -224,7 +232,7 @@ export default function DeploymentDetail() {
         const lines: string[] = data.lines ?? [];
         deploymentLogLinesRef.current = lines;
         setLogs(runtimeLogLinesRef.current.length
-          ? [...lines, "", "-- J.H.P runtime logs --", ...runtimeLogLinesRef.current]
+          ? [...lines, "", "-- JHP runtime logs --", ...runtimeLogLinesRef.current]
           : lines);
       } catch (error) {
         setHerokuStatusError(error instanceof Error ? error.message : "Could not refresh deployment logs");
@@ -250,7 +258,7 @@ export default function DeploymentDetail() {
     let retryTimer: number | undefined;
 
     const appendRuntimeLines = (lines: string[]) => {
-      const tagged = lines.filter(Boolean).map((line) => `[Heroku runtime] ${line}`);
+      const tagged = lines.filter(Boolean).map((line) => `[JHP] ${brandLogLine(line)}`);
       if (!tagged.length) return;
       runtimeLogLinesRef.current.push(...tagged);
       if (runtimeLogLinesRef.current.length > 1000) {
@@ -259,7 +267,7 @@ export default function DeploymentDetail() {
       setLogs([
         ...deploymentLogLinesRef.current,
         "",
-        "-- J.H.P runtime logs --",
+        "-- JHP runtime logs --",
         ...runtimeLogLinesRef.current,
       ]);
     };
@@ -301,7 +309,7 @@ export default function DeploymentDetail() {
           }
         } catch (error) {
           if (cancelled) break;
-          setHerokuStatusError(error instanceof Error ? error.message : "Heroku runtime log stream disconnected");
+          setHerokuStatusError(error instanceof Error ? brandLogLine(error.message) : "JHP runtime log stream disconnected");
         } finally {
           setIsRuntimeStreamConnected(false);
         }
@@ -345,7 +353,7 @@ export default function DeploymentDetail() {
     try {
       const statusRes = await fetch(`${API_BASE}/api/deployments/${id}/heroku-status`, { headers: authHeader(), cache: "no-store" });
       const statusData = await statusRes.json();
-      if (!statusRes.ok) throw new Error(statusData.error ?? "Could not read Heroku status");
+      if (!statusRes.ok) throw new Error(statusData.error ?? "Could not read JHP status");
       if (statusRes.ok && statusData.status) setDeployStatus(statusData.status);
       if (statusRes.ok) {
         setFailureReason(statusData.failureReason ?? null);
@@ -357,11 +365,11 @@ export default function DeploymentDetail() {
       const lines: string[] = deployData.lines ?? [];
       deploymentLogLinesRef.current = lines;
       setLogs(runtimeLogLinesRef.current.length
-        ? [...lines, "", "-- J.H.P runtime logs --", ...runtimeLogLinesRef.current]
+        ? [...lines, "", "-- JHP runtime logs --", ...runtimeLogLinesRef.current]
         : lines);
       setHerokuStatusError(null);
-      toast({ title: "Heroku status and logs refreshed" });
-    } catch (error) { toast({ title: "Could not refresh Heroku data", description: error instanceof Error ? error.message : "Try again shortly.", variant: "destructive" }); }
+      toast({ title: "JHP status and logs refreshed" });
+    } catch (error) { toast({ title: "Could not refresh JHP data", description: error instanceof Error ? brandLogLine(error.message) : "Try again shortly.", variant: "destructive" }); }
     finally { setIsRefreshingLogs(false); }
   }
 
@@ -523,7 +531,7 @@ export default function DeploymentDetail() {
                 </Button>
               </>}
               <Button size="sm" variant="outline" className="gap-1.5" onClick={handleRefreshLogs} disabled={isRefreshingLogs}>
-                <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingLogs ? "animate-spin" : ""}`} /> Check Heroku
+                <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingLogs ? "animate-spin" : ""}`} /> Check JHP
               </Button>
             </div>
           </div>
@@ -539,11 +547,11 @@ export default function DeploymentDetail() {
                 </div>
                 {isBuilding && (
                   <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[11px] text-blue-300">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Checking Heroku
+                    <Loader2 className="h-3 w-3 animate-spin" /> Checking JHP
                   </span>
                 )}
               </CardHeader>
-              {herokuStatusError && <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-300">Heroku status check: {herokuStatusError}</div>}
+              {herokuStatusError && <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-300">JHP status check: {brandLogLine(herokuStatusError)}</div>}
               <CardContent className="p-0">
                 <div className="relative h-[60vh] overflow-hidden rounded-b-xl bg-[#080d14]">
                   <ScrollArea

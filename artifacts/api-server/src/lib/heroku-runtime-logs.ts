@@ -15,15 +15,15 @@ async function openLogSession(
   });
   const session = await sessionResponse.json().catch(() => ({})) as { logplex_url?: string; message?: string };
   if (!sessionResponse.ok) {
-    throw new Error(`Heroku log session request failed (${sessionResponse.status}): ${session.message ?? sessionResponse.statusText}`);
+    throw new Error(`JHP log session request failed (${sessionResponse.status}): ${session.message ?? sessionResponse.statusText}`);
   }
-  if (!session.logplex_url) throw new Error("Heroku did not return a Logplex URL");
+  if (!session.logplex_url) throw new Error("JHP did not return a runtime log URL");
 
   let logplexUrl: URL;
   try {
     logplexUrl = new URL(session.logplex_url);
   } catch {
-    throw new Error("Heroku returned an invalid Logplex URL");
+    throw new Error("JHP returned an invalid runtime log URL");
   }
   const hostname = logplexUrl.hostname.toLowerCase().replace(/\.$/, "");
   const isHerokuLogplexHost = hostname === "logplex.heroku.com"
@@ -34,14 +34,14 @@ async function openLogSession(
     || hostname.endsWith(".logplex.io");
   if (logplexUrl.protocol !== "https:" || logplexUrl.port && logplexUrl.port !== "443"
     || logplexUrl.username || logplexUrl.password || !isHerokuLogplexHost) {
-    throw new Error("Heroku returned an unexpected Logplex host");
+    throw new Error("JHP returned an unexpected runtime log host");
   }
 
   const logsResponse = await fetch(logplexUrl, {
     signal: signal ?? AbortSignal.timeout(15_000),
     cache: "no-store",
   });
-  if (!logsResponse.ok) throw new Error(`Heroku Logplex request failed (${logsResponse.status})`);
+  if (!logsResponse.ok) throw new Error(`JHP runtime log request failed (${logsResponse.status})`);
   return logsResponse;
 }
 

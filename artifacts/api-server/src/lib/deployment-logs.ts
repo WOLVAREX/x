@@ -6,9 +6,16 @@ function timestamped(line: string): string {
   return `[${new Date().toISOString()}] ${line}`;
 }
 
+export function brandDeploymentLogLine(line: string): string {
+  return line
+    .replace(/\bHeroku build\b/gi, "JHP Build")
+    .replace(/\bHeroku runtime\b/gi, "JHP")
+    .replace(/\bHeroku\b/gi, "JHP");
+}
+
 export async function appendDeploymentLogs(deploymentId: number, lines: string[]): Promise<void> {
   if (lines.length === 0) return;
-  const entries = lines.map(timestamped);
+  const entries = lines.map(brandDeploymentLogLine).map(timestamped);
   const values = sql.join(entries.map((line) => sql`${line}`), sql`, `);
   await db.update(deploymentsTable)
     .set({ logs: sql`array_cat(coalesce(${deploymentsTable.logs}, ARRAY[]::text[]), ARRAY[${values}]::text[])` })

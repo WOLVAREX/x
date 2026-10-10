@@ -5,6 +5,7 @@ import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { getSetting, setSetting } from "../lib/settings";
 import { fetchHerokuRuntimeLogs } from "../lib/heroku-runtime-logs";
+import { brandDeploymentLogLine } from "../lib/deployment-logs";
 
 const router: IRouter = Router();
 const HEROKU_BASE = "https://api.heroku.com";
@@ -367,13 +368,13 @@ router.get("/admin/deployments/:id/logs", requireAdmin, async (req, res): Promis
   const [dep] = await db.select().from(deploymentsTable).where(eq(deploymentsTable.id, id));
   if (!dep) { res.status(404).json({ error: "Not found" }); return; }
 
-  let lines = (dep.logs as string[]) ?? [];
+  let lines = ((dep.logs as string[]) ?? []).map(brandDeploymentLogLine);
 
   // Fetch live Heroku logs too
   if (dep.herokuAppId && ((await getSetting("HEROKU_TEAM_API_KEY")) || (await getSetting("HEROKU_API_KEY")))) {
     try {
       const herokuLines = await fetchHerokuRuntimeLogs(dep.herokuAppId, await herokuHeaders());
-      lines = [...lines, "", "-- Heroku runtime logs --", ...herokuLines.map((line) => `[Heroku runtime] ${line}`)];
+      lines = [...lines, "", "-- JHP runtime logs --", ...herokuLines.map((line) => brandDeploymentLogLine(`[JHP] ${line}`))];
     } catch (error) {
       logger.warn({ err: error, deploymentId: id }, "Could not fetch Heroku runtime logs for admin view");
     }

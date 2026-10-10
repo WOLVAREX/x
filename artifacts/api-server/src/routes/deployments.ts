@@ -6,7 +6,7 @@ import { logger } from "../lib/logger";
 import { getSetting } from "../lib/settings";
 import { findPlan, getPlans } from "../lib/plans";
 import { getBotHealth } from "../lib/bot-health";
-import { appendDeploymentLog as appendLog, appendDeploymentLogs as appendLogs } from "../lib/deployment-logs";
+import { appendDeploymentLog as appendLog, appendDeploymentLogs as appendLogs, brandDeploymentLogLine } from "../lib/deployment-logs";
 import { fetchHerokuRuntimeLogs, openHerokuRuntimeLogStream } from "../lib/heroku-runtime-logs";
 
 const router: IRouter = Router();
@@ -186,7 +186,7 @@ async function streamHerokuBuildOutput(deploymentId: number, outputStreamUrl: un
         let line = part.replace(/\u0000/g, "");
         if (eventStream && /^(?:event|id|retry):/.test(line)) continue;
         if (eventStream && line.startsWith("data:")) line = line.slice(5).replace(/^ /, "");
-        if (line.trim()) batch.push(`[Heroku build] ${line.slice(0, 2_000)}`);
+        if (line.trim()) batch.push(`[JHP Build] ${line.slice(0, 2_000)}`);
       }
       await flush();
     };
@@ -645,7 +645,7 @@ router.get("/deployments/:id/logs", requireAuth, async (req, res): Promise<void>
     .where(and(eq(deploymentsTable.id, id), eq(deploymentsTable.userId, user.id)));
 
   if (!deployment) { res.status(404).json({ error: "Deployment not found" }); return; }
-  res.json({ lines: (deployment.logs as string[]) ?? [], status: deployment.status });
+  res.json({ lines: ((deployment.logs as string[]) ?? []).map(brandDeploymentLogLine), status: deployment.status });
 });
 
 router.get("/deployments/:id/heroku-status", requireAuth, async (req, res): Promise<void> => {
@@ -1120,7 +1120,7 @@ router.get("/deployments/:id/heroku-logs/stream", requireAuth, async (req, res):
     res.status(200);
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("X-Accel-Buffering", "no");
-    res.setHeader("X-Log-Source", "Heroku Logplex");
+    res.setHeader("X-Log-Source", "JHP");
     const reader = upstream.body.getReader();
     try {
       while (!controller.signal.aborted) {
@@ -1174,10 +1174,10 @@ router.get("/deployments/:id/heroku-logs", requireAuth, async (req, res): Promis
   try {
     const lines = await fetchHerokuRuntimeLogs(deployment.herokuAppId, await herokuHeaders());
     res.json({
-      lines: lines.map((line) => `[Heroku runtime] ${line}`),
+      lines: lines.map((line) => brandDeploymentLogLine(`[JHP] ${line}`)),
       herokuAppId: deployment.herokuAppId,
       fetchedAt: new Date().toISOString(),
-      source: "Heroku Logplex",
+      source: "JHP",
     });
   } catch (err) {
     logger.error({ err }, "Heroku logs error");
